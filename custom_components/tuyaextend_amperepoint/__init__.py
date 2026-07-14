@@ -5,7 +5,7 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.typing import ConfigType
 
-from .const import DOMAIN, PLATFORMS
+from .const import CONF_SOURCE_DEVICE_ID, DOMAIN, PLATFORMS
 from .coordinator import AmperePointCoordinator
 from .dashboard import async_create_dashboard
 from .discovery import discover_sources
@@ -17,6 +17,7 @@ from .planner_model import PlannerConfigError
 SERVICE_SET_PLANNER = "set_planner"
 SERVICE_SET_PLANNER_OVERRIDE = "set_planner_override"
 _SERVICES_REGISTERED = f"{DOMAIN}_planner_services_registered"
+_AUTO_ADOPTION_STARTED = "auto_adoption_started"
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -47,13 +48,33 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
-def _async_adopt_discovered_chargers(hass: HomeAssistant) -> None:
+def _async_adopt_discovered_chargers(hass: HomeAssistant) -> int:
     """Start discovery flows for Tuya chargers that have no entry yet.
 
     New devices join the integration (and the panel's device selector)
     automatically; duplicates are rejected by the flow's unique_id.
     """
-    for candidate in discover_sources(hass):
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    if domain_data.get(_AUTO_ADOPTION_STARTED):
+        return 0
+
+    candidates = discover_sources(hass)
+    if not candidates:
+        return 0
+
+    # Mark the pass before scheduling flows. A newly created entry runs its own
+    # setup immediately, so without this guard it could schedule the same
+    # still-in-flight candidates again before their unique IDs are committed.
+    domain_data[_AUTO_ADOPTION_STARTED] = True
+    configured_device_ids = {
+        str(config_entry.data.get(CONF_SOURCE_DEVICE_ID, ""))
+        for config_entry in hass.config_entries.async_entries(DOMAIN)
+    }
+
+    scheduled = 0
+    for candidate in candidates:
+        if candidate.device_id in configured_device_ids:
+            continue
         hass.async_create_task(
             hass.config_entries.flow.async_init(
                 DOMAIN,
@@ -61,6 +82,8 @@ def _async_adopt_discovered_chargers(hass: HomeAssistant) -> None:
                 data=candidate.as_config_data(),
             )
         )
+        scheduled += 1
+    return scheduled
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

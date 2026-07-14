@@ -1,3 +1,7 @@
+const AP_Q22_DASHBOARD_VERSION = "0.5.4";
+const AP_Q22_INTEGRATION_DOMAIN = "tuyaextend_amperepoint";
+const AP_Q22_HACS_PATH = "/hacs/repository?owner=amperepoint&repository=tuyaextend-amperepoint&category=integration";
+
 const AP_Q22_I18N = {
   en: {
     active: "active",
@@ -68,6 +72,7 @@ const AP_Q22_I18N = {
     plannerStartAction: "Start charging",
     plannerStopAction: "Stop charging",
     deviceSelect: "Charger",
+    deviceSwitchBlocked: "Save or discard planner changes before switching charger",
     plannerCommand: "Tuya command",
     plannerManual: "Manual override",
     plannerCharge30: "Charge 30 min",
@@ -127,6 +132,11 @@ const AP_Q22_I18N = {
     dayFri: "Fri",
     daySat: "Sat",
     daySun: "Sun",
+    dashboardSettings: "Integration settings",
+    dashboardVersion: "Dashboard version",
+    dashboardUpToDate: "up to date",
+    dashboardUpdateAvailable: "update to v{version} available",
+    dashboardUpdateUnknown: "update status unavailable",
     temperature: "Temperature",
     voltage: "Voltage",
   },
@@ -199,6 +209,7 @@ const AP_Q22_I18N = {
     plannerStartAction: "Rozpocznij ładowanie",
     plannerStopAction: "Zatrzymaj ładowanie",
     deviceSelect: "Ładowarka",
+    deviceSwitchBlocked: "Zapisz lub odrzuć zmiany planera przed zmianą ładowarki",
     plannerCommand: "Komenda Tuya",
     plannerManual: "Sterowanie ręczne",
     plannerCharge30: "Ładuj 30 min",
@@ -258,6 +269,11 @@ const AP_Q22_I18N = {
     dayFri: "Pt",
     daySat: "Sob",
     daySun: "Nd",
+    dashboardSettings: "Ustawienia integracji",
+    dashboardVersion: "Wersja dashboardu",
+    dashboardUpToDate: "aktualna",
+    dashboardUpdateAvailable: "dostępna aktualizacja do v{version}",
+    dashboardUpdateUnknown: "stan aktualizacji niedostępny",
     temperature: "Temperatura",
     voltage: "Napięcie",
   },
@@ -501,6 +517,8 @@ class AmperePointQ22Card extends HTMLElement {
       language: "auto",
       maxPowerKw: 22,
       phaseMaxPowerKw: 7.4,
+      dashboardVersion: AP_Q22_DASHBOARD_VERSION,
+      settingsPath: `/config/integrations/integration/${AP_Q22_INTEGRATION_DOMAIN}`,
       ...config,
       entities: { ...(config.entities || {}) },
     };
@@ -555,7 +573,7 @@ class AmperePointQ22Card extends HTMLElement {
       current_limit: "currentLimit",
       target_energy: "targetEnergy",
       charging_mode: "chargingMode",
-      schedule_time: "scheduleStartTime",
+      schedule_start_time: "scheduleStartTime",
       schedule_end_time: "scheduleEndTime",
       planner: "planner",
       status: "status",
@@ -622,8 +640,36 @@ class AmperePointQ22Card extends HTMLElement {
     return options[0].id;
   }
 
+  deviceSelectionLocked() {
+    return Boolean(
+      this._plannerDirty ||
+        this._plannerSaving ||
+        this._plannerActionPending ||
+        this._pendingChargingMode
+    );
+  }
+
+  resetDeviceTransientState() {
+    this.clearPendingChargingMode();
+    this._plannerDirty = false;
+    this._plannerSaved = false;
+    this._plannerSaving = false;
+    this._plannerSource = null;
+    this._plannerDraft = null;
+    this._plannerValidation = null;
+    this._plannerError = null;
+    this._plannerUndo = null;
+    this._plannerActionPending = null;
+    this._plannerEnergyValue = null;
+  }
+
   selectDevice(deviceId) {
     if (!deviceId || deviceId === this.apSelectedDeviceId()) return;
+    if (this.deviceSelectionLocked()) {
+      this.render();
+      return;
+    }
+    this.resetDeviceTransientState();
     this._deviceOverride = deviceId;
     const detected = this.detectEntities(deviceId);
     this.config.entities = { ...detected.entities };
@@ -930,7 +976,57 @@ class AmperePointQ22Card extends HTMLElement {
   }
 
   plannerEntryId() {
-    return this.stateObj(this.config.entities.planner)?.attributes?.config_entry_id;
+    return this.config.configEntryId || this.stateObj(this.config.entities.planner)?.attributes?.config_entry_id;
+  }
+
+  integrationSettingsPath() {
+    const base = this.config.settingsPath || `/config/integrations/integration/${AP_Q22_INTEGRATION_DOMAIN}`;
+    const entryId = this.plannerEntryId();
+    return entryId ? `${base}#config_entry=${encodeURIComponent(entryId)}` : base;
+  }
+
+  hacsUpdateEntity() {
+    if (this.config.updateEntity && this.stateObj(this.config.updateEntity)) {
+      return this.stateObj(this.config.updateEntity);
+    }
+    if (this.stateObj("update.tuyaextend_amperepoint_update")) {
+      return this.stateObj("update.tuyaextend_amperepoint_update");
+    }
+    return Object.values(this._hass?.states || {}).find((entity) => {
+      if (!entity.entity_id?.startsWith("update.")) return false;
+      const haystack = [
+        entity.entity_id,
+        entity.attributes?.friendly_name,
+        entity.attributes?.title,
+        entity.attributes?.release_url,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes("tuyaextend_amperepoint") || haystack.includes("tuyaextend-amperepoint");
+    });
+  }
+
+  dashboardVersionInfo() {
+    const version = String(this.config.dashboardVersion || AP_Q22_DASHBOARD_VERSION);
+    const updateEntity = this.hacsUpdateEntity();
+    if (!updateEntity) {
+      return { version, status: this.t("dashboardUpdateUnknown"), state: "unknown" };
+    }
+    if (updateEntity.state === "on") {
+      const latest = String(updateEntity.attributes?.latest_version || "?").replace(/^v/i, "");
+      return {
+        version,
+        status: this.tt("dashboardUpdateAvailable", { version: latest }),
+        state: "update",
+      };
+    }
+    return { version, status: this.t("dashboardUpToDate"), state: "current" };
+  }
+
+  navigateTo(path) {
+    window.history.pushState(null, "", path);
+    window.dispatchEvent(new Event("location-changed"));
   }
 
   async savePlanner() {
@@ -1453,6 +1549,7 @@ class AmperePointQ22Card extends HTMLElement {
 
     const deviceOptions = this.apDeviceOptions();
     const selectedDeviceId = this.apSelectedDeviceId();
+    const deviceSelectionLocked = this.deviceSelectionLocked();
     const e = this.config.entities;
     const powerAvailable = this.hasEntity(e.power);
     const power = this.num(e.power);
@@ -1642,6 +1739,8 @@ class AmperePointQ22Card extends HTMLElement {
 
     const contentPanels = [phasePanel, statusPanel].filter(Boolean);
     const hasAnyData = powerCard || controlCard || plannerCard || metrics || contentPanels.length || hasRaw;
+    const versionInfo = this.dashboardVersionInfo();
+    const settingsPath = this.integrationSettingsPath();
 
     this.innerHTML = `
       <ha-card>
@@ -1655,7 +1754,7 @@ class AmperePointQ22Card extends HTMLElement {
             <div class="hero-status">
               ${
                 deviceOptions.length > 1
-                  ? `<label class="device-select-wrap"><span>${this.t("deviceSelect")}</span><select class="device-select">${deviceOptions
+                  ? `<label class="device-select-wrap"><span>${this.t("deviceSelect")}</span><select class="device-select" ${deviceSelectionLocked ? "disabled" : ""} title="${deviceSelectionLocked ? this.escape(this.t("deviceSwitchBlocked")) : ""}">${deviceOptions
                       .map(
                         (option) =>
                           `<option value="${this.escape(option.id)}" ${option.id === selectedDeviceId ? "selected" : ""}>${this.escape(option.name)}</option>`
@@ -1703,6 +1802,22 @@ class AmperePointQ22Card extends HTMLElement {
               `
               : `<div class="empty-state">${this.icon("mdi:database-off")} ${this.t("noData")}</div>`
           }
+          <footer class="card-footer">
+            <a class="footer-link" data-navigate href="${this.escape(settingsPath)}">
+              ${this.icon("mdi:cog-outline")}
+              <span>${this.t("dashboardSettings")}</span>
+            </a>
+            <a
+              class="version-flag ${versionInfo.state}"
+              data-navigate
+              href="${AP_Q22_HACS_PATH}"
+              title="${this.escape(versionInfo.status)}"
+            >
+              <span class="version-dot" aria-hidden="true"></span>
+              <span>${this.t("dashboardVersion")}: <strong>v${this.escape(versionInfo.version)}</strong></span>
+              <span class="version-status">${this.escape(versionInfo.status)}</span>
+            </a>
+          </footer>
         </div>
       </ha-card>
     `;
@@ -1714,6 +1829,13 @@ class AmperePointQ22Card extends HTMLElement {
     this.querySelector(".device-select")?.addEventListener("change", (event) =>
       this.selectDevice(event.target.value)
     );
+    this.querySelectorAll("[data-navigate]").forEach((link) => {
+      link.addEventListener("click", (event) => {
+        if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        this.navigateTo(link.getAttribute("href"));
+      });
+    });
     this.querySelector(".power-button")?.addEventListener("click", () => this.toggleCharging());
     this.querySelector(".current-slider")?.addEventListener("change", (event) => {
       this.setCurrentLimit(event.target.value);
@@ -2742,6 +2864,77 @@ class AmperePointQ22Card extends HTMLElement {
           gap: 10px;
           color: var(--ap-muted);
         }
+        .card-footer {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          flex-wrap: wrap;
+          gap: 10px 16px;
+          margin-top: 16px;
+          padding: 12px 2px 0;
+          border-top: 1px solid var(--ap-border);
+          color: var(--ap-muted);
+          font-size: 12px;
+        }
+        .footer-link, .version-flag {
+          color: inherit;
+          text-decoration: none;
+          transition: color .18s ease, background .18s ease, border-color .18s ease;
+        }
+        .footer-link {
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+          min-height: 34px;
+          padding: 0 10px;
+          border-radius: 9px;
+          font-weight: 760;
+        }
+        .footer-link:hover, .footer-link:focus-visible {
+          color: var(--ap-text);
+          background: rgba(255,255,255,.06);
+          outline: none;
+        }
+        .version-flag {
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+          min-height: 30px;
+          padding: 0 10px;
+          border: 1px solid var(--ap-border);
+          border-radius: 999px;
+          background: rgba(255,255,255,.035);
+        }
+        .version-flag:hover, .version-flag:focus-visible {
+          color: var(--ap-text);
+          border-color: rgba(255,255,255,.18);
+          outline: none;
+        }
+        .version-dot {
+          width: 7px;
+          height: 7px;
+          flex: 0 0 auto;
+          border-radius: 50%;
+          background: var(--ap-green);
+          box-shadow: 0 0 0 3px rgba(53,196,109,.12);
+        }
+        .version-flag.update {
+          color: #ffd292;
+          border-color: rgba(255,151,15,.35);
+          background: var(--ap-orange-soft);
+        }
+        .version-flag.update .version-dot {
+          background: var(--ap-orange);
+          box-shadow: 0 0 0 3px rgba(255,151,15,.14);
+        }
+        .version-flag.unknown .version-dot {
+          background: var(--ap-muted);
+          box-shadow: none;
+        }
+        .version-status::before {
+          content: "·";
+          margin-right: 7px;
+        }
         @media (max-width: 1100px) {
           .dashboard, .content-grid, .power-card {
             grid-template-columns: 1fr;
@@ -2831,6 +3024,15 @@ class AmperePointQ22Card extends HTMLElement {
           .planner-energy button {
             flex: 1;
           }
+          .card-footer {
+            align-items: stretch;
+            flex-direction: column;
+          }
+          .footer-link, .version-flag {
+            width: 100%;
+            box-sizing: border-box;
+            justify-content: center;
+          }
         }
         @container amperepoint-card (max-width: 1100px) {
           .dashboard, .content-grid, .power-card {
@@ -2914,6 +3116,15 @@ class AmperePointQ22Card extends HTMLElement {
           }
           .planner-energy button {
             flex: 1;
+          }
+          .card-footer {
+            align-items: stretch;
+            flex-direction: column;
+          }
+          .footer-link, .version-flag {
+            width: 100%;
+            box-sizing: border-box;
+            justify-content: center;
           }
         }
       `;
