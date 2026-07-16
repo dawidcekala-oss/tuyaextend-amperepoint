@@ -48,7 +48,10 @@ Home Assistant card itself.
 
 The built-in planner is independent of the charger's single Tuya `local_timer`
 window. It supports multiple weekly intervals with minute precision and a
-separate current limit for every interval. Manual controls can charge for 30 or
+separate current limit for every interval. Overlapping and back-to-back
+intervals are merged into one continuous charging block, so charging is not
+interrupted where intervals meet; while intervals overlap, the higher-priority
+interval decides the current limit. Manual controls can charge for 30 or
 60 minutes, add a selected amount of energy, pause until the next interval or
 return to the weekly plan.
 
