@@ -96,6 +96,10 @@ def install_homeassistant_stubs() -> None:
         "homeassistant.helpers.dispatcher",
         async_dispatcher_connect=lambda *_args, **_kwargs: (lambda: None),
     )
+    helpers.event = _module(
+        "homeassistant.helpers.event",
+        async_track_time_change=lambda *_args, **_kwargs: (lambda: None),
+    )
     helpers.update_coordinator = _module(
         "homeassistant.helpers.update_coordinator",
         DataUpdateCoordinator=_DataUpdateCoordinator,

@@ -288,8 +288,7 @@ class AmperePointPlanner:
             # command channel returns to idle instead of showing the last
             # confirmation forever. last_confirmation keeps the history for
             # the detail line.
-            if self.command_status != "failed":
-                self.command_status = "idle"
+            self.command_status = "idle"
             self._notify()
 
     async def _async_confirm_pending(self, now: datetime) -> bool:

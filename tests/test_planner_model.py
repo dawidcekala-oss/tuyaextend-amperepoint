@@ -7,23 +7,20 @@ import sys
 
 sys.path.insert(
     0,
-    str(
-        Path(__file__).resolve().parents[1]
-        / "custom_components"
-        / "tuyaextend_amperepoint"
-    ),
+    str(Path(__file__).resolve().parent),
 )
 
-from planner_model import (  # noqa: E402
-    PlannerConfigError,
-    active_window,
-    matches_expected,
-    merged_blocks,
-    next_event,
-    next_window_start,
-    normalize_windows,
-    planner_transitions,
-)
+from support import load_integration_module  # noqa: E402
+
+planner_model = load_integration_module("planner_model")
+PlannerConfigError = planner_model.PlannerConfigError
+active_window = planner_model.active_window
+matches_expected = planner_model.matches_expected
+merged_blocks = planner_model.merged_blocks
+next_event = planner_model.next_event
+next_window_start = planner_model.next_window_start
+normalize_windows = planner_model.normalize_windows
+planner_transitions = planner_model.planner_transitions
 
 
 WARSAW = timezone(timedelta(hours=2))
