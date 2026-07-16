@@ -109,7 +109,7 @@ const AP_Q22_I18N = {
     plannerDeleted: "Interval removed from the draft.",
     plannerUndo: "Undo",
     plannerSaving: "Saving…",
-    plannerIdle: "ready",
+    plannerIdle: "no active command",
     plannerPending: "awaiting confirmation",
     plannerConfirmed: "confirmed",
     plannerFailed: "confirmation failed",
@@ -239,7 +239,7 @@ const AP_Q22_I18N = {
     plannerDeleted: "Przedział usunięto ze szkicu.",
     plannerUndo: "Cofnij",
     plannerSaving: "Zapisywanie…",
-    plannerIdle: "gotowe",
+    plannerIdle: "brak aktywnej komendy",
     plannerPending: "oczekuje na potwierdzenie",
     plannerConfirmed: "potwierdzona",
     plannerFailed: "brak potwierdzenia",
@@ -997,7 +997,11 @@ class AmperePointQ22Card extends HTMLElement {
     const time = timestamp
       ? new Date(timestamp).toLocaleTimeString(this.locale(), { hour: "2-digit", minute: "2-digit" })
       : null;
-    return `${this.plannerCommandAction(command.action)}${time ? ` · ${this.tt("plannerCommandTime", { time })}` : ""}`;
+    const error =
+      !pending && attributes.command_status === "failed" && last?.error
+        ? this.escape(String(last.error))
+        : null;
+    return `${this.plannerCommandAction(command.action)}${time ? ` · ${this.tt("plannerCommandTime", { time })}` : ""}${error ? ` · ${error}` : ""}`;
   }
 
   formatPlannerDate(value) {
@@ -1109,7 +1113,7 @@ class AmperePointQ22Card extends HTMLElement {
         </div>
         <div class="planner-summary">
           <div>${this.icon("mdi:calendar-arrow-right")}<span><small>${effectiveNext.label}</small><b>${effectiveNext.text}</b></span></div>
-          <div>${this.icon(attributes.command_status === "pending" ? "mdi:cloud-sync-outline" : "mdi:cloud-check-outline")}<span><small>${this.t("plannerCommand")}</small><b>${this.plannerCommandLabel(attributes.command_status)}</b>${commandDetail ? `<em>${commandDetail}</em>` : ""}</span></div>
+          <div>${this.icon(attributes.command_status === "pending" ? "mdi:cloud-sync-outline" : attributes.command_status === "failed" ? "mdi:cloud-alert" : "mdi:cloud-check-outline")}<span><small>${this.t("plannerCommand")}</small><b>${this.plannerCommandLabel(attributes.command_status)}</b>${commandDetail ? `<em>${commandDetail}</em>` : ""}</span></div>
         </div>
         <label class="planner-master">
           <input class="planner-enabled" type="checkbox" role="switch" ${draft.enabled ? "checked" : ""} aria-label="${draft.enabled ? this.t("plannerDraftOn") : this.t("plannerDraftOff")}" />
