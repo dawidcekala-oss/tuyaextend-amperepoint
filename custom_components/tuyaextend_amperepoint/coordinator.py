@@ -756,7 +756,6 @@ def _convert_unit(value: float, unit: str | None, kind: str) -> float:
 
 PHASE_MIN_CURRENT_A = 1.0
 PHASE_MIN_POWER_KW = 0.23
-PHASE_RELATIVE_SHARE = 0.3
 
 
 def _filter_loaded_phases(
@@ -768,30 +767,20 @@ def _filter_loaded_phases(
     chargers report zero or residual values, and three-phase chargers can
     report small phantom readings on unloaded phases during minimal
     single-phase charging, which made three phases pop up on a single-phase
-    session. A phase is exposed only while its reading is meaningful both in
-    absolute terms and relative to the strongest phase.
+    session. Either trustworthy measurement (current or power) establishes
+    load on its own, so a genuinely loaded low-current phase is never hidden
+    by the state of the other phases.
     """
-    currents = [phase.get("current") or 0.0 for phase in phases]
-    powers = [phase.get("power") or 0.0 for phase in phases]
-    max_current = max(currents)
-    max_power = max(powers)
-
     filtered: list[dict[str, float | None]] = []
-    for phase, current, power in zip(phases, currents, powers):
-        if phase.get("current") is not None:
-            loaded = (
-                current >= PHASE_MIN_CURRENT_A
-                and current >= PHASE_RELATIVE_SHARE * max_current
-            )
-        elif phase.get("power") is not None:
-            loaded = (
-                power >= PHASE_MIN_POWER_KW
-                and power >= PHASE_RELATIVE_SHARE * max_power
-            )
-        else:
-            loaded = False
+    for phase in phases:
+        current = phase.get("current")
+        power = phase.get("power")
+        current_loaded = current is not None and current >= PHASE_MIN_CURRENT_A
+        power_loaded = power is not None and power >= PHASE_MIN_POWER_KW
         filtered.append(
-            phase if loaded else {"voltage": None, "current": None, "power": None}
+            phase
+            if current_loaded or power_loaded
+            else {"voltage": None, "current": None, "power": None}
         )
     return filtered
 
