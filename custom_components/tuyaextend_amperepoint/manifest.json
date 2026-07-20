@@ -5,9 +5,9 @@
   "codeowners": [],
   "config_flow": true,
   "documentation": "https://github.com/amperepoint/tuyaextend-amperepoint",
-  "integration_type": "helper",
+  "integration_type": "device",
   "iot_class": "calculated",
   "issue_tracker": "https://github.com/amperepoint/tuyaextend-amperepoint/issues",
   "requirements": [],
-  "version": "0.5.2"
+  "version": "0.5.3"
 }
