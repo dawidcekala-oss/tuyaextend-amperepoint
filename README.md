@@ -136,7 +136,9 @@ url: /tuyaextend_amperepoint/frontend/amperepoint-q22-card.js
 type: module
 ```
 
-For multiple chargers, pass `entityPrefix` or explicit `entities` to the card.
+With more than one AmperePoint charger configured, the card header shows a
+charger selector, so one panel can switch between devices. Alternatively pass
+`entityPrefix` or explicit `entities` to pin a card to one charger.
 For example:
 
 ```yaml

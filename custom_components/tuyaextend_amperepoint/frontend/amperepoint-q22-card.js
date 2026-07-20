@@ -67,6 +67,7 @@ const AP_Q22_I18N = {
     plannerNoNext: "No scheduled action",
     plannerStartAction: "Start charging",
     plannerStopAction: "Stop charging",
+    deviceSelect: "Charger",
     plannerCommand: "Tuya command",
     plannerManual: "Manual override",
     plannerCharge30: "Charge 30 min",
@@ -197,6 +198,7 @@ const AP_Q22_I18N = {
     plannerNoNext: "Brak zaplanowanej akcji",
     plannerStartAction: "Rozpocznij ładowanie",
     plannerStopAction: "Zatrzymaj ładowanie",
+    deviceSelect: "Ładowarka",
     plannerCommand: "Komenda Tuya",
     plannerManual: "Sterowanie ręczne",
     plannerCharge30: "Ładuj 30 min",
@@ -524,6 +526,13 @@ class AmperePointQ22Card extends HTMLElement {
 
   applyAutoEntities() {
     if (!this._hass?.states || !this.config) return;
+    if (this._deviceOverride) {
+      // A charger picked from the device selector replaces the static
+      // entity mapping so the card follows the chosen device.
+      const detected = this.detectEntities(this.apSelectedDeviceId());
+      this.config.entities = { ...detected.entities };
+      return;
+    }
     const detected = this.detectEntities();
     this.config.entities = {
       ...detected.entities,
@@ -534,7 +543,94 @@ class AmperePointQ22Card extends HTMLElement {
     }
   }
 
-  detectEntities() {
+  apRegistryEntities(deviceId) {
+    // Language-independent mapping from the integration's entity registry
+    // (translation_key) to card entity keys, mirroring dashboard.py.
+    const keys = {
+      charging: "switch",
+      current_limit: "currentLimit",
+      target_energy: "targetEnergy",
+      charging_mode: "chargingMode",
+      schedule_time: "scheduleStartTime",
+      schedule_end_time: "scheduleEndTime",
+      planner: "planner",
+      status: "status",
+      vehicle_connected: "cp",
+      error: "faults",
+      power: "power",
+      session_energy: "sessionEnergy",
+      total_energy: "totalEnergy",
+      last_session_energy: "lastSessionDp25",
+      temperature: "temperature",
+      system_version: "systemVersion",
+      raw_dp: "rawDp",
+      phase_count: "phaseCount",
+      voltage_l1: "l1Voltage",
+      voltage_l2: "l2Voltage",
+      voltage_l3: "l3Voltage",
+      current_l1: "l1Current",
+      current_l2: "l2Current",
+      current_l3: "l3Current",
+      power_l1: "l1Power",
+      power_l2: "l2Power",
+      power_l3: "l3Power",
+    };
+    const detected = {};
+    for (const [entityId, meta] of Object.entries(this._hass?.entities || {})) {
+      if (meta?.platform !== "tuyaextend_amperepoint") continue;
+      if (deviceId && meta.device_id !== deviceId) continue;
+      const cardKey = keys[meta.translation_key];
+      if (cardKey && !detected[cardKey]) detected[cardKey] = entityId;
+    }
+    return detected;
+  }
+
+  apDeviceOptions() {
+    const registry = this._hass?.entities || {};
+    const devices = this._hass?.devices || {};
+    const found = new Map();
+    for (const meta of Object.values(registry)) {
+      if (meta?.platform !== "tuyaextend_amperepoint" || !meta.device_id) continue;
+      if (found.has(meta.device_id)) continue;
+      const device = devices[meta.device_id] || {};
+      found.set(meta.device_id, {
+        id: meta.device_id,
+        name: device.name_by_user || device.name || meta.device_id,
+      });
+    }
+    return [...found.values()].sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  }
+
+  apEntityDeviceId(entityId) {
+    return this._hass?.entities?.[String(entityId || "")]?.device_id || null;
+  }
+
+  apSelectedDeviceId() {
+    const options = this.apDeviceOptions();
+    if (!options.length) return null;
+    if (this._deviceOverride && options.some((option) => option.id === this._deviceOverride)) {
+      return this._deviceOverride;
+    }
+    for (const entityId of Object.values(this.config?.entities || {})) {
+      const deviceId = this.apEntityDeviceId(entityId);
+      if (deviceId) return deviceId;
+    }
+    return options[0].id;
+  }
+
+  selectDevice(deviceId) {
+    if (!deviceId || deviceId === this.apSelectedDeviceId()) return;
+    this._deviceOverride = deviceId;
+    const detected = this.detectEntities(deviceId);
+    this.config.entities = { ...detected.entities };
+    const device = this._hass?.devices?.[deviceId];
+    this.config.title =
+      device?.name_by_user || device?.name || detected.title || this.config.title;
+    this.render();
+  }
+
+  detectEntities(deviceId = null) {
+    const registryDetected = this.apRegistryEntities(deviceId);
     const specs = {
       switch: { domains: ["switch"], any: [" charging", "_charging", " ladowanie", "_switch", " start stop"], not: [] },
       currentLimit: { domains: ["number", "input_number"], any: ["current limit", "current_limit", "charging current", "charging_current", "charge cur set", "charge_cur_set", "limit pradu"], not: ["current_l1", "current_l2", "current_l3"] },
@@ -569,7 +665,7 @@ class AmperePointQ22Card extends HTMLElement {
     };
     const detected = {};
     for (const [key, spec] of Object.entries(specs)) {
-      detected[key] = this.findEntity(spec);
+      detected[key] = registryDetected[key] || this.findEntity(spec, deviceId);
     }
     Object.keys(detected).forEach((key) => {
       if (!detected[key]) delete detected[key];
@@ -580,10 +676,15 @@ class AmperePointQ22Card extends HTMLElement {
     };
   }
 
-  findEntity(spec) {
+  findEntity(spec, deviceId = null) {
     const prefix = this.normalizeSearch(this.config?.entityPrefix || "");
-    const all = Object.keys(this._hass?.states || {}).sort();
-    const relevant = all.filter((entityId) => this.isRelevantEntity(entityId, prefix));
+    let all = Object.keys(this._hass?.states || {}).sort();
+    if (deviceId) {
+      all = all.filter((entityId) => this.apEntityDeviceId(entityId) === deviceId);
+    }
+    const relevant = deviceId
+      ? all
+      : all.filter((entityId) => this.isRelevantEntity(entityId, prefix));
     const pools = relevant.length ? [relevant, all] : [all];
     for (const pool of pools) {
       for (const entityId of pool) {
@@ -1346,6 +1447,8 @@ class AmperePointQ22Card extends HTMLElement {
   render() {
     if (!this.config || !this._hass) return;
 
+    const deviceOptions = this.apDeviceOptions();
+    const selectedDeviceId = this.apSelectedDeviceId();
     const e = this.config.entities;
     const powerAvailable = this.hasEntity(e.power);
     const power = this.num(e.power);
@@ -1547,6 +1650,16 @@ class AmperePointQ22Card extends HTMLElement {
             </div>
             <div class="hero-status">
               ${
+                deviceOptions.length > 1
+                  ? `<label class="device-select-wrap"><span>${this.t("deviceSelect")}</span><select class="device-select">${deviceOptions
+                      .map(
+                        (option) =>
+                          `<option value="${this.escape(option.id)}" ${option.id === selectedDeviceId ? "selected" : ""}>${this.escape(option.name)}</option>`
+                      )
+                      .join("")}</select></label>`
+                  : ""
+              }
+              ${
                 this.hasEntity(e.status) || charging
                   ? `<span class="pill ${charging ? "charging" : "idle"}">${charging ? this.t("charging") : this.human(this.state(e.status))}</span>`
                   : ""
@@ -1594,6 +1707,9 @@ class AmperePointQ22Card extends HTMLElement {
       this.prepend(this._style);
     }
 
+    this.querySelector(".device-select")?.addEventListener("change", (event) =>
+      this.selectDevice(event.target.value)
+    );
     this.querySelector(".power-button")?.addEventListener("click", () => this.toggleCharging());
     this.querySelector(".current-slider")?.addEventListener("change", (event) => {
       this.setCurrentLimit(event.target.value);
@@ -1748,6 +1864,24 @@ class AmperePointQ22Card extends HTMLElement {
           flex-direction: column;
           align-items: flex-end;
           gap: 8px;
+        }
+        .device-select-wrap {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          color: var(--ap-muted);
+          font-size: 12px;
+          font-weight: 700;
+        }
+        .device-select {
+          font: inherit;
+          color: var(--ap-text);
+          background: var(--ap-panel-2);
+          border: 1px solid var(--ap-border);
+          border-radius: 10px;
+          padding: 8px 10px;
+          max-width: min(260px, 60vw);
+          cursor: pointer;
         }
         .pill {
           display: inline-flex;
