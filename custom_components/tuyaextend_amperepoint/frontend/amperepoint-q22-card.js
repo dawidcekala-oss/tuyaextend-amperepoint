@@ -1,3 +1,7 @@
+const AP_Q22_DASHBOARD_VERSION = "0.5.4";
+const AP_Q22_INTEGRATION_DOMAIN = "tuyaextend_amperepoint";
+const AP_Q22_HACS_PATH = "/hacs/repository?owner=amperepoint&repository=tuyaextend-amperepoint&category=integration";
+
 const AP_Q22_I18N = {
   en: {
     active: "active",
@@ -67,6 +71,8 @@ const AP_Q22_I18N = {
     plannerNoNext: "No scheduled action",
     plannerStartAction: "Start charging",
     plannerStopAction: "Stop charging",
+    deviceSelect: "Charger",
+    deviceSwitchBlocked: "Save or discard planner changes before switching charger",
     plannerCommand: "Tuya command",
     plannerManual: "Manual override",
     plannerCharge30: "Charge 30 min",
@@ -109,7 +115,7 @@ const AP_Q22_I18N = {
     plannerDeleted: "Interval removed from the draft.",
     plannerUndo: "Undo",
     plannerSaving: "Saving…",
-    plannerIdle: "ready",
+    plannerIdle: "no active command",
     plannerPending: "awaiting confirmation",
     plannerConfirmed: "confirmed",
     plannerFailed: "confirmation failed",
@@ -126,6 +132,11 @@ const AP_Q22_I18N = {
     dayFri: "Fri",
     daySat: "Sat",
     daySun: "Sun",
+    dashboardSettings: "Integration settings",
+    dashboardVersion: "Dashboard version",
+    dashboardUpToDate: "up to date",
+    dashboardUpdateAvailable: "update to v{version} available",
+    dashboardUpdateUnknown: "update status unavailable",
     temperature: "Temperature",
     voltage: "Voltage",
   },
@@ -197,6 +208,8 @@ const AP_Q22_I18N = {
     plannerNoNext: "Brak zaplanowanej akcji",
     plannerStartAction: "Rozpocznij ładowanie",
     plannerStopAction: "Zatrzymaj ładowanie",
+    deviceSelect: "Ładowarka",
+    deviceSwitchBlocked: "Zapisz lub odrzuć zmiany planera przed zmianą ładowarki",
     plannerCommand: "Komenda Tuya",
     plannerManual: "Sterowanie ręczne",
     plannerCharge30: "Ładuj 30 min",
@@ -239,7 +252,7 @@ const AP_Q22_I18N = {
     plannerDeleted: "Przedział usunięto ze szkicu.",
     plannerUndo: "Cofnij",
     plannerSaving: "Zapisywanie…",
-    plannerIdle: "gotowe",
+    plannerIdle: "brak aktywnej komendy",
     plannerPending: "oczekuje na potwierdzenie",
     plannerConfirmed: "potwierdzona",
     plannerFailed: "brak potwierdzenia",
@@ -256,6 +269,11 @@ const AP_Q22_I18N = {
     dayFri: "Pt",
     daySat: "Sob",
     daySun: "Nd",
+    dashboardSettings: "Ustawienia integracji",
+    dashboardVersion: "Wersja dashboardu",
+    dashboardUpToDate: "aktualna",
+    dashboardUpdateAvailable: "dostępna aktualizacja do v{version}",
+    dashboardUpdateUnknown: "stan aktualizacji niedostępny",
     temperature: "Temperatura",
     voltage: "Napięcie",
   },
@@ -499,6 +517,8 @@ class AmperePointQ22Card extends HTMLElement {
       language: "auto",
       maxPowerKw: 22,
       phaseMaxPowerKw: 7.4,
+      dashboardVersion: AP_Q22_DASHBOARD_VERSION,
+      settingsPath: `/config/integrations/integration/${AP_Q22_INTEGRATION_DOMAIN}`,
       ...config,
       entities: { ...(config.entities || {}) },
     };
@@ -524,17 +544,143 @@ class AmperePointQ22Card extends HTMLElement {
 
   applyAutoEntities() {
     if (!this._hass?.states || !this.config) return;
-    const detected = this.detectEntities();
-    this.config.entities = {
-      ...detected.entities,
-      ...(this.config.entities || {}),
-    };
-    if ((!this.config.title || this.config.title === "AmperePoint") && detected.title) {
-      this.config.title = detected.title;
+    // Detection is scoped to one charger so a shared panel never mixes
+    // entities of different devices.
+    const deviceId = this.apSelectedDeviceId();
+    const detected = this.detectEntities(deviceId);
+    if (this._deviceOverride) {
+      // A charger picked from the device selector replaces the static
+      // entity mapping so the card follows the chosen device.
+      this.config.entities = { ...detected.entities };
+    } else {
+      this.config.entities = {
+        ...detected.entities,
+        ...(this.config.entities || {}),
+      };
+    }
+    if (!this.config.title || this.config.title === "AmperePoint") {
+      const device = deviceId ? this._hass?.devices?.[deviceId] : null;
+      const label = device?.name_by_user || device?.name || detected.title;
+      if (label) this.config.title = label;
     }
   }
 
-  detectEntities() {
+  apRegistryEntities(deviceId) {
+    // Language-independent mapping from the integration's entity registry
+    // (translation_key) to card entity keys, mirroring dashboard.py.
+    const keys = {
+      charging: "switch",
+      current_limit: "currentLimit",
+      target_energy: "targetEnergy",
+      charging_mode: "chargingMode",
+      schedule_start_time: "scheduleStartTime",
+      schedule_end_time: "scheduleEndTime",
+      planner: "planner",
+      status: "status",
+      vehicle_connected: "cp",
+      error: "faults",
+      power: "power",
+      session_energy: "sessionEnergy",
+      total_energy: "totalEnergy",
+      last_session_energy: "lastSessionDp25",
+      temperature: "temperature",
+      system_version: "systemVersion",
+      raw_dp: "rawDp",
+      phase_count: "phaseCount",
+      voltage_l1: "l1Voltage",
+      voltage_l2: "l2Voltage",
+      voltage_l3: "l3Voltage",
+      current_l1: "l1Current",
+      current_l2: "l2Current",
+      current_l3: "l3Current",
+      power_l1: "l1Power",
+      power_l2: "l2Power",
+      power_l3: "l3Power",
+    };
+    const detected = {};
+    for (const [entityId, meta] of Object.entries(this._hass?.entities || {})) {
+      if (meta?.platform !== "tuyaextend_amperepoint") continue;
+      if (deviceId && meta.device_id !== deviceId) continue;
+      const cardKey = keys[meta.translation_key];
+      if (cardKey && !detected[cardKey]) detected[cardKey] = entityId;
+    }
+    return detected;
+  }
+
+  apDeviceOptions() {
+    const registry = this._hass?.entities || {};
+    const devices = this._hass?.devices || {};
+    const found = new Map();
+    for (const meta of Object.values(registry)) {
+      if (meta?.platform !== "tuyaextend_amperepoint" || !meta.device_id) continue;
+      if (found.has(meta.device_id)) continue;
+      const device = devices[meta.device_id] || {};
+      found.set(meta.device_id, {
+        id: meta.device_id,
+        name: device.name_by_user || device.name || meta.device_id,
+      });
+    }
+    return [...found.values()].sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  }
+
+  apEntityDeviceId(entityId) {
+    return this._hass?.entities?.[String(entityId || "")]?.device_id || null;
+  }
+
+  apSelectedDeviceId() {
+    const options = this.apDeviceOptions();
+    if (!options.length) return null;
+    if (this._deviceOverride && options.some((option) => option.id === this._deviceOverride)) {
+      return this._deviceOverride;
+    }
+    for (const entityId of Object.values(this.config?.entities || {})) {
+      const deviceId = this.apEntityDeviceId(entityId);
+      if (deviceId) return deviceId;
+    }
+    return options[0].id;
+  }
+
+  deviceSelectionLocked() {
+    return Boolean(
+      this._plannerDirty ||
+        this._plannerSaving ||
+        this._plannerActionPending ||
+        this._pendingChargingMode
+    );
+  }
+
+  resetDeviceTransientState() {
+    this.clearPendingChargingMode();
+    this._plannerDirty = false;
+    this._plannerSaved = false;
+    this._plannerSaving = false;
+    this._plannerSource = null;
+    this._plannerDraft = null;
+    this._plannerValidation = null;
+    this._plannerError = null;
+    this._plannerUndo = null;
+    this._plannerActionPending = null;
+    this._plannerEnergyValue = null;
+  }
+
+  selectDevice(deviceId) {
+    if (!deviceId || deviceId === this.apSelectedDeviceId()) return;
+    if (this.deviceSelectionLocked()) {
+      this.render();
+      return;
+    }
+    this.resetDeviceTransientState();
+    this._deviceOverride = deviceId;
+    const detected = this.detectEntities(deviceId);
+    this.config.entities = { ...detected.entities };
+    const device = this._hass?.devices?.[deviceId];
+    this.config.title =
+      device?.name_by_user || device?.name || detected.title || this.config.title;
+    this.render();
+  }
+
+  detectEntities(deviceId = null) {
+    const registryDetected = this.apRegistryEntities(deviceId);
     const specs = {
       switch: { domains: ["switch"], any: [" charging", "_charging", " ladowanie", "_switch", " start stop"], not: [] },
       currentLimit: { domains: ["number", "input_number"], any: ["current limit", "current_limit", "charging current", "charging_current", "charge cur set", "charge_cur_set", "limit pradu"], not: ["current_l1", "current_l2", "current_l3"] },
@@ -569,7 +715,7 @@ class AmperePointQ22Card extends HTMLElement {
     };
     const detected = {};
     for (const [key, spec] of Object.entries(specs)) {
-      detected[key] = this.findEntity(spec);
+      detected[key] = registryDetected[key] || this.findEntity(spec, deviceId);
     }
     Object.keys(detected).forEach((key) => {
       if (!detected[key]) delete detected[key];
@@ -580,10 +726,15 @@ class AmperePointQ22Card extends HTMLElement {
     };
   }
 
-  findEntity(spec) {
+  findEntity(spec, deviceId = null) {
     const prefix = this.normalizeSearch(this.config?.entityPrefix || "");
-    const all = Object.keys(this._hass?.states || {}).sort();
-    const relevant = all.filter((entityId) => this.isRelevantEntity(entityId, prefix));
+    let all = Object.keys(this._hass?.states || {}).sort();
+    if (deviceId) {
+      all = all.filter((entityId) => this.apEntityDeviceId(entityId) === deviceId);
+    }
+    const relevant = deviceId
+      ? all
+      : all.filter((entityId) => this.isRelevantEntity(entityId, prefix));
     const pools = relevant.length ? [relevant, all] : [all];
     for (const pool of pools) {
       for (const entityId of pool) {
@@ -825,7 +976,57 @@ class AmperePointQ22Card extends HTMLElement {
   }
 
   plannerEntryId() {
-    return this.stateObj(this.config.entities.planner)?.attributes?.config_entry_id;
+    return this.config.configEntryId || this.stateObj(this.config.entities.planner)?.attributes?.config_entry_id;
+  }
+
+  integrationSettingsPath() {
+    const base = this.config.settingsPath || `/config/integrations/integration/${AP_Q22_INTEGRATION_DOMAIN}`;
+    const entryId = this.plannerEntryId();
+    return entryId ? `${base}#config_entry=${encodeURIComponent(entryId)}` : base;
+  }
+
+  hacsUpdateEntity() {
+    if (this.config.updateEntity && this.stateObj(this.config.updateEntity)) {
+      return this.stateObj(this.config.updateEntity);
+    }
+    if (this.stateObj("update.tuyaextend_amperepoint_update")) {
+      return this.stateObj("update.tuyaextend_amperepoint_update");
+    }
+    return Object.values(this._hass?.states || {}).find((entity) => {
+      if (!entity.entity_id?.startsWith("update.")) return false;
+      const haystack = [
+        entity.entity_id,
+        entity.attributes?.friendly_name,
+        entity.attributes?.title,
+        entity.attributes?.release_url,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes("tuyaextend_amperepoint") || haystack.includes("tuyaextend-amperepoint");
+    });
+  }
+
+  dashboardVersionInfo() {
+    const version = String(this.config.dashboardVersion || AP_Q22_DASHBOARD_VERSION);
+    const updateEntity = this.hacsUpdateEntity();
+    if (!updateEntity) {
+      return { version, status: this.t("dashboardUpdateUnknown"), state: "unknown" };
+    }
+    if (updateEntity.state === "on") {
+      const latest = String(updateEntity.attributes?.latest_version || "?").replace(/^v/i, "");
+      return {
+        version,
+        status: this.tt("dashboardUpdateAvailable", { version: latest }),
+        state: "update",
+      };
+    }
+    return { version, status: this.t("dashboardUpToDate"), state: "current" };
+  }
+
+  navigateTo(path) {
+    window.history.pushState(null, "", path);
+    window.dispatchEvent(new Event("location-changed"));
   }
 
   async savePlanner() {
@@ -997,7 +1198,11 @@ class AmperePointQ22Card extends HTMLElement {
     const time = timestamp
       ? new Date(timestamp).toLocaleTimeString(this.locale(), { hour: "2-digit", minute: "2-digit" })
       : null;
-    return `${this.plannerCommandAction(command.action)}${time ? ` · ${this.tt("plannerCommandTime", { time })}` : ""}`;
+    const error =
+      !pending && attributes.command_status === "failed" && last?.error
+        ? this.escape(String(last.error))
+        : null;
+    return `${this.plannerCommandAction(command.action)}${time ? ` · ${this.tt("plannerCommandTime", { time })}` : ""}${error ? ` · ${error}` : ""}`;
   }
 
   formatPlannerDate(value) {
@@ -1035,10 +1240,17 @@ class AmperePointQ22Card extends HTMLElement {
     const next = attributes.next_action;
     return {
       label: this.t("plannerWeeklyNext"),
-      text: next
-        ? `${this.t(next.action === "start" ? "plannerStartAction" : "plannerStopAction")} · ${this.formatPlannerDate(next.at)}`
-        : this.t("plannerNoNext"),
+      text: next ? `${this.plannerNextActionText(next)} · ${this.formatPlannerDate(next.at)}` : this.t("plannerNoNext"),
     };
+  }
+
+  plannerNextActionText(next) {
+    if (next.action === "start") return this.t("plannerStartAction");
+    if (next.action === "set_current") {
+      const current = Number(next.current_a);
+      return `${this.t("plannerCommandSetCurrent")}${Number.isFinite(current) ? ` ${current} A` : ""}`;
+    }
+    return this.t("plannerStopAction");
   }
 
   plannerOverrideBanner(override) {
@@ -1109,7 +1321,7 @@ class AmperePointQ22Card extends HTMLElement {
         </div>
         <div class="planner-summary">
           <div>${this.icon("mdi:calendar-arrow-right")}<span><small>${effectiveNext.label}</small><b>${effectiveNext.text}</b></span></div>
-          <div>${this.icon(attributes.command_status === "pending" ? "mdi:cloud-sync-outline" : "mdi:cloud-check-outline")}<span><small>${this.t("plannerCommand")}</small><b>${this.plannerCommandLabel(attributes.command_status)}</b>${commandDetail ? `<em>${commandDetail}</em>` : ""}</span></div>
+          <div>${this.icon(attributes.command_status === "pending" ? "mdi:cloud-sync-outline" : attributes.command_status === "failed" ? "mdi:cloud-alert" : "mdi:cloud-check-outline")}<span><small>${this.t("plannerCommand")}</small><b>${this.plannerCommandLabel(attributes.command_status)}</b>${commandDetail ? `<em>${commandDetail}</em>` : ""}</span></div>
         </div>
         <label class="planner-master">
           <input class="planner-enabled" type="checkbox" role="switch" ${draft.enabled ? "checked" : ""} aria-label="${draft.enabled ? this.t("plannerDraftOn") : this.t("plannerDraftOff")}" />
@@ -1335,6 +1547,9 @@ class AmperePointQ22Card extends HTMLElement {
   render() {
     if (!this.config || !this._hass) return;
 
+    const deviceOptions = this.apDeviceOptions();
+    const selectedDeviceId = this.apSelectedDeviceId();
+    const deviceSelectionLocked = this.deviceSelectionLocked();
     const e = this.config.entities;
     const powerAvailable = this.hasEntity(e.power);
     const power = this.num(e.power);
@@ -1524,6 +1739,8 @@ class AmperePointQ22Card extends HTMLElement {
 
     const contentPanels = [phasePanel, statusPanel].filter(Boolean);
     const hasAnyData = powerCard || controlCard || plannerCard || metrics || contentPanels.length || hasRaw;
+    const versionInfo = this.dashboardVersionInfo();
+    const settingsPath = this.integrationSettingsPath();
 
     this.innerHTML = `
       <ha-card>
@@ -1535,6 +1752,16 @@ class AmperePointQ22Card extends HTMLElement {
               ${heroMeta ? `<div class="hero-meta">${heroMeta}</div>` : ""}
             </div>
             <div class="hero-status">
+              ${
+                deviceOptions.length > 1
+                  ? `<label class="device-select-wrap"><span>${this.t("deviceSelect")}</span><select class="device-select" ${deviceSelectionLocked ? "disabled" : ""} title="${deviceSelectionLocked ? this.escape(this.t("deviceSwitchBlocked")) : ""}">${deviceOptions
+                      .map(
+                        (option) =>
+                          `<option value="${this.escape(option.id)}" ${option.id === selectedDeviceId ? "selected" : ""}>${this.escape(option.name)}</option>`
+                      )
+                      .join("")}</select></label>`
+                  : ""
+              }
               ${
                 this.hasEntity(e.status) || charging
                   ? `<span class="pill ${charging ? "charging" : "idle"}">${charging ? this.t("charging") : this.human(this.state(e.status))}</span>`
@@ -1575,6 +1802,22 @@ class AmperePointQ22Card extends HTMLElement {
               `
               : `<div class="empty-state">${this.icon("mdi:database-off")} ${this.t("noData")}</div>`
           }
+          <footer class="card-footer">
+            <a class="footer-link" data-navigate href="${this.escape(settingsPath)}">
+              ${this.icon("mdi:cog-outline")}
+              <span>${this.t("dashboardSettings")}</span>
+            </a>
+            <a
+              class="version-flag ${versionInfo.state}"
+              data-navigate
+              href="${AP_Q22_HACS_PATH}"
+              title="${this.escape(versionInfo.status)}"
+            >
+              <span class="version-dot" aria-hidden="true"></span>
+              <span>${this.t("dashboardVersion")}: <strong>v${this.escape(versionInfo.version)}</strong></span>
+              <span class="version-status">${this.escape(versionInfo.status)}</span>
+            </a>
+          </footer>
         </div>
       </ha-card>
     `;
@@ -1583,6 +1826,16 @@ class AmperePointQ22Card extends HTMLElement {
       this.prepend(this._style);
     }
 
+    this.querySelector(".device-select")?.addEventListener("change", (event) =>
+      this.selectDevice(event.target.value)
+    );
+    this.querySelectorAll("[data-navigate]").forEach((link) => {
+      link.addEventListener("click", (event) => {
+        if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        this.navigateTo(link.getAttribute("href"));
+      });
+    });
     this.querySelector(".power-button")?.addEventListener("click", () => this.toggleCharging());
     this.querySelector(".current-slider")?.addEventListener("change", (event) => {
       this.setCurrentLimit(event.target.value);
@@ -1737,6 +1990,24 @@ class AmperePointQ22Card extends HTMLElement {
           flex-direction: column;
           align-items: flex-end;
           gap: 8px;
+        }
+        .device-select-wrap {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          color: var(--ap-muted);
+          font-size: 12px;
+          font-weight: 700;
+        }
+        .device-select {
+          font: inherit;
+          color: var(--ap-text);
+          background: var(--ap-panel-2);
+          border: 1px solid var(--ap-border);
+          border-radius: 10px;
+          padding: 8px 10px;
+          max-width: min(260px, 60vw);
+          cursor: pointer;
         }
         .pill {
           display: inline-flex;
@@ -2593,6 +2864,77 @@ class AmperePointQ22Card extends HTMLElement {
           gap: 10px;
           color: var(--ap-muted);
         }
+        .card-footer {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          flex-wrap: wrap;
+          gap: 10px 16px;
+          margin-top: 16px;
+          padding: 12px 2px 0;
+          border-top: 1px solid var(--ap-border);
+          color: var(--ap-muted);
+          font-size: 12px;
+        }
+        .footer-link, .version-flag {
+          color: inherit;
+          text-decoration: none;
+          transition: color .18s ease, background .18s ease, border-color .18s ease;
+        }
+        .footer-link {
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+          min-height: 34px;
+          padding: 0 10px;
+          border-radius: 9px;
+          font-weight: 760;
+        }
+        .footer-link:hover, .footer-link:focus-visible {
+          color: var(--ap-text);
+          background: rgba(255,255,255,.06);
+          outline: none;
+        }
+        .version-flag {
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+          min-height: 30px;
+          padding: 0 10px;
+          border: 1px solid var(--ap-border);
+          border-radius: 999px;
+          background: rgba(255,255,255,.035);
+        }
+        .version-flag:hover, .version-flag:focus-visible {
+          color: var(--ap-text);
+          border-color: rgba(255,255,255,.18);
+          outline: none;
+        }
+        .version-dot {
+          width: 7px;
+          height: 7px;
+          flex: 0 0 auto;
+          border-radius: 50%;
+          background: var(--ap-green);
+          box-shadow: 0 0 0 3px rgba(53,196,109,.12);
+        }
+        .version-flag.update {
+          color: #ffd292;
+          border-color: rgba(255,151,15,.35);
+          background: var(--ap-orange-soft);
+        }
+        .version-flag.update .version-dot {
+          background: var(--ap-orange);
+          box-shadow: 0 0 0 3px rgba(255,151,15,.14);
+        }
+        .version-flag.unknown .version-dot {
+          background: var(--ap-muted);
+          box-shadow: none;
+        }
+        .version-status::before {
+          content: "·";
+          margin-right: 7px;
+        }
         @media (max-width: 1100px) {
           .dashboard, .content-grid, .power-card {
             grid-template-columns: 1fr;
@@ -2682,6 +3024,15 @@ class AmperePointQ22Card extends HTMLElement {
           .planner-energy button {
             flex: 1;
           }
+          .card-footer {
+            align-items: stretch;
+            flex-direction: column;
+          }
+          .footer-link, .version-flag {
+            width: 100%;
+            box-sizing: border-box;
+            justify-content: center;
+          }
         }
         @container amperepoint-card (max-width: 1100px) {
           .dashboard, .content-grid, .power-card {
@@ -2765,6 +3116,15 @@ class AmperePointQ22Card extends HTMLElement {
           }
           .planner-energy button {
             flex: 1;
+          }
+          .card-footer {
+            align-items: stretch;
+            flex-direction: column;
+          }
+          .footer-link, .version-flag {
+            width: 100%;
+            box-sizing: border-box;
+            justify-content: center;
           }
         }
       `;

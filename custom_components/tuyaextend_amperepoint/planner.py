@@ -17,7 +17,7 @@ from .planner_model import (
     PlannerConfigError,
     active_window,
     matches_expected,
-    next_event,
+    next_transition,
     next_window_start,
     normalize_windows,
 )
@@ -284,10 +284,11 @@ class AmperePointPlanner:
                 self.managed_charging = False
                 await self._async_save()
 
-            if self.command_status == "pending":
-                self.command_status = "confirmed"
-            elif self.command_status != "confirmed":
-                self.command_status = "idle"
+            # The desired state is satisfied and nothing is in flight; the
+            # command channel returns to idle instead of showing the last
+            # confirmation forever. last_confirmation keeps the history for
+            # the detail line.
+            self.command_status = "idle"
             self._notify()
 
     async def _async_confirm_pending(self, now: datetime) -> bool:
@@ -401,7 +402,7 @@ class AmperePointPlanner:
     def snapshot(self) -> dict[str, Any]:
         now = dt_util.now()
         active = active_window(self.config["windows"], now)
-        upcoming = next_event(self.config["windows"], now)
+        upcoming = next_transition(self.config["windows"], now)
         return {
             "config_entry_id": self.entry.entry_id,
             "enabled": self.config.get("enabled", False),

@@ -5,7 +5,8 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.typing import ConfigType
 
-from .const import CONF_CREATE_DASHBOARD, DEFAULT_CREATE_DASHBOARD, DOMAIN, PLATFORMS
+from .adoption import start_auto_adoption
+from .const import DOMAIN, PLATFORMS
 from .coordinator import AmperePointCoordinator
 from .dashboard import async_create_dashboard
 from .frontend import async_register_frontend
@@ -39,9 +40,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     await planner.async_start()
 
-    settings = {**entry.data, **entry.options}
-    if settings.get(CONF_CREATE_DASHBOARD, DEFAULT_CREATE_DASHBOARD):
-        await async_create_dashboard(hass, entry)
+    await async_create_dashboard(hass, entry)
+    start_auto_adoption(hass)
 
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     return True

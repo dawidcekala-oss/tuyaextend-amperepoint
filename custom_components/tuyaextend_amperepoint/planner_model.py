@@ -103,13 +103,23 @@ def active_window(
                 active.append({**window, "active_start": start, "active_end": end})
     if not active:
         return None
-    return max(active, key=lambda item: (item.get("priority", 0), item["active_start"]))
+    # Among overlapping windows the highest priority wins, then the one that
+    # started last (the more specific window), then the highest current so the
+    # winner stays deterministic for windows saved in any order.
+    return max(
+        active,
+        key=lambda item: (
+            item.get("priority", 0),
+            item["active_start"],
+            item.get("current_a", 0),
+        ),
+    )
 
 
-def planner_events(
+def _occurrences(
     windows: list[dict[str, Any]], now: datetime, *, days_ahead: int = 8
-) -> list[dict[str, Any]]:
-    events: list[dict[str, Any]] = []
+) -> list[tuple[datetime, datetime, dict[str, Any]]]:
+    occurrences: list[tuple[datetime, datetime, dict[str, Any]]] = []
     midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
     for day_offset in range(-1, days_ahead + 1):
         start_day = midnight + timedelta(days=day_offset)
@@ -117,13 +127,102 @@ def planner_events(
             if start_day.weekday() not in window["days"]:
                 continue
             start, end = _occurrence(window, start_day)
-            if start > now:
-                events.append(
-                    {"action": "start", "at": start, "window_id": window["id"]}
-                )
-            if end > now:
-                events.append({"action": "stop", "at": end, "window_id": window["id"]})
+            occurrences.append((start, end, window))
+    occurrences.sort(key=lambda item: (item[0], item[1]))
+    return occurrences
+
+
+def merged_blocks(
+    windows: list[dict[str, Any]], now: datetime, *, days_ahead: int = 8
+) -> list[dict[str, Any]]:
+    """Merge overlapping and touching occurrences into continuous blocks.
+
+    Overlapping intervals (for example 10:00-12:00 and 10:00-11:00) and
+    touching intervals (10:00-11:00 and 11:00-12:00) must charge without
+    interruption, so start/stop events are derived from these merged blocks
+    instead of from the individual windows.
+    """
+    blocks: list[dict[str, Any]] = []
+    for start, end, window in _occurrences(windows, now, days_ahead=days_ahead):
+        if blocks and start <= blocks[-1]["end"]:
+            if end > blocks[-1]["end"]:
+                blocks[-1]["end"] = end
+        else:
+            blocks.append({"start": start, "end": end, "window_id": window["id"]})
+    return blocks
+
+
+def planner_events(
+    windows: list[dict[str, Any]], now: datetime, *, days_ahead: int = 8
+) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    for block in merged_blocks(windows, now, days_ahead=days_ahead):
+        if block["start"] > now:
+            events.append(
+                {
+                    "action": "start",
+                    "at": block["start"],
+                    "window_id": block["window_id"],
+                }
+            )
+        if block["end"] > now:
+            events.append(
+                {
+                    "action": "stop",
+                    "at": block["end"],
+                    "window_id": block["window_id"],
+                }
+            )
     return sorted(events, key=lambda event: event["at"])
+
+
+def planner_transitions(
+    windows: list[dict[str, Any]], now: datetime, *, days_ahead: int = 8
+) -> list[dict[str, Any]]:
+    """Derive the effective plan actions from all interval boundaries.
+
+    Merged blocks describe start/stop continuity, but inside a block the
+    winning interval can change the current limit (for example an outer
+    10:00-12:00 at 10 A with a higher-priority 10:30-11:00 at 16 A). The
+    transitions therefore include ``set_current`` actions whenever the
+    winning interval changes the current, in addition to block ``start``
+    and ``stop``.
+    """
+    boundaries = sorted(
+        {
+            boundary
+            for start, end, _window in _occurrences(
+                windows, now, days_ahead=days_ahead
+            )
+            for boundary in (start, end)
+        }
+    )
+    transitions: list[dict[str, Any]] = []
+    previous_current: float | None = None
+    for boundary in boundaries:
+        winner = active_window(windows, boundary)
+        current = float(winner["current_a"]) if winner else None
+        if current == previous_current:
+            continue
+        if previous_current is None:
+            transitions.append(
+                {"action": "start", "at": boundary, "current_a": current}
+            )
+        elif current is None:
+            transitions.append({"action": "stop", "at": boundary})
+        else:
+            transitions.append(
+                {"action": "set_current", "at": boundary, "current_a": current}
+            )
+        previous_current = current
+    return [transition for transition in transitions if transition["at"] > now]
+
+
+def next_transition(
+    windows: list[dict[str, Any]], now: datetime
+) -> dict[str, Any] | None:
+    transitions = planner_transitions(windows, now)
+    return transitions[0] if transitions else None
 
 
 def next_event(windows: list[dict[str, Any]], now: datetime) -> dict[str, Any] | None:

@@ -227,6 +227,7 @@ class AmperePointCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "phase_c",
             ),
         ]
+        phases = _filter_loaded_phases(phases)
         phase_voltages = [phase.get("voltage") for phase in phases]
         phase_currents = [phase.get("current") for phase in phases]
         phase_powers = [phase.get("power") for phase in phases]
@@ -751,6 +752,37 @@ def _convert_unit(value: float, unit: str | None, kind: str) -> float:
         return value
 
     return value
+
+
+PHASE_MIN_CURRENT_A = 1.0
+PHASE_MIN_POWER_KW = 0.23
+
+
+def _filter_loaded_phases(
+    phases: list[dict[str, float | None]],
+) -> list[dict[str, float | None]]:
+    """Expose only phases that carry real load.
+
+    Phase measurements should appear once charging draws current. Idle
+    chargers report zero or residual values, and three-phase chargers can
+    report small phantom readings on unloaded phases during minimal
+    single-phase charging, which made three phases pop up on a single-phase
+    session. Either trustworthy measurement (current or power) establishes
+    load on its own, so a genuinely loaded low-current phase is never hidden
+    by the state of the other phases.
+    """
+    filtered: list[dict[str, float | None]] = []
+    for phase in phases:
+        current = phase.get("current")
+        power = phase.get("power")
+        current_loaded = current is not None and current >= PHASE_MIN_CURRENT_A
+        power_loaded = power is not None and power >= PHASE_MIN_POWER_KW
+        filtered.append(
+            phase
+            if current_loaded or power_loaded
+            else {"voltage": None, "current": None, "power": None}
+        )
+    return filtered
 
 
 def _decode_phase_payload(value: Any) -> dict[str, float] | None:
