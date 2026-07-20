@@ -1,0 +1,104 @@
+# Canonical tuya-local profile for Wallbox Prime 22kW.
+#
+# Install by copying this file into custom_components/tuya_local/devices/.
+# Product ID: gbmxngploofmhbjc
+# Protocol: Tuya LAN 3.5
+
+---
+
+name: EV charger
+products:
+  - id: gbmxngploofmhbjc
+    manufacturer: Ampere Point
+    model: Wallbox Prime 22kW
+
+entities:
+  - entity: sensor
+    name: Charging status
+    icon: "mdi:ev-station"
+    class: enum
+    dps:
+      - id: 109
+        type: string
+        name: sensor
+        mapping:
+          - dps_val: SLEEP
+            value: sleep
+          - dps_val: IDLE
+            value: idle
+          - dps_val: WORKING
+            value: charging
+      - id: 101
+        type: integer
+        name: state_code
+      - id: 102
+        type: json
+        name: telemetry
+      - id: 103
+        type: json
+        optional: true
+        name: session_data
+      - id: 106
+        type: json
+        name: device_information
+
+  - entity: sensor
+    name: Current limit
+    icon: "mdi:current-ac"
+    class: current
+    category: diagnostic
+    dps:
+      - id: 150
+        type: integer
+        name: sensor
+        unit: A
+      - id: 107
+        type: json
+        name: allowed_values
+      - id: 152
+        type: integer
+        name: maximum_value
+      - id: 157
+        type: integer
+        name: minimum_value
+
+  - entity: sensor
+    name: Schedule configuration
+    category: diagnostic
+    dps:
+      - id: 151
+        type: json
+        name: sensor
+
+  - entity: sensor
+    name: Language
+    class: enum
+    category: diagnostic
+    dps:
+      - id: 153
+        type: string
+        name: sensor
+
+  - entity: binary_sensor
+    name: Unknown setting
+    category: diagnostic
+    dps:
+      - id: 155
+        type: boolean
+        name: sensor
+
+  - entity: sensor
+    name: Raw diagnostics
+    category: diagnostic
+    hidden: true
+    dps:
+      - id: 108
+        type: integer
+        name: dp_108
+      - id: 154
+        type: integer
+        name: dp_154
+      - id: 188
+        type: boolean
+        optional: true
+        name: dp_188

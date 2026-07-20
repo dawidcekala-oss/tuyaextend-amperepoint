@@ -54,8 +54,21 @@ Current profile coverage:
 | `bktb3jskdic1ar2t` | `profiles/tuya_local/amperepoint_q_series_evcharger.yaml` |
 | `fdfjiphjxtc9qyhd` | `profiles/tuya_local/amperepoint_ve_evcharger.yaml` |
 | `cu111poj2mtikvls` | `profiles/tuya_local/amperepoint_q22_ota_evcharger.yaml`, candidate until physical test |
+| `gbmxngploofmhbjc` | `profiles/tuya_local/amperepoint_prime_22kw_evcharger.yaml`, read-only telemetry profile |
 
 Other product IDs should be added to a profile only after a function-definition screenshot/export or physical local DP dump confirms the layout.
+
+## Physical LAN-only product maps
+
+| Product name | Product ID | Evidence | Notes |
+| --- | --- | --- | --- |
+| `Wallbox Prime 22kW` | `gbmxngploofmhbjc` | Direct Tuya LAN 3.5 reads | The DP layout differs from the documented Q-series products. The initial cloud integration was light-like and the inverter profile selected by `tuya-local` was incompatible. |
+
+Detailed observation:
+
+```text
+docs/product-gbmxngploofmhbjc-ampere-point-prime-22kw.md
+```
 
 ## Product function maps
 
