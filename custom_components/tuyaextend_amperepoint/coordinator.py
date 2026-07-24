@@ -144,9 +144,7 @@ class AmperePointCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _async_update_data(self) -> dict[str, Any]:
         now = dt_util.utcnow()
-        prime_telemetry = _decode_prime_telemetry(
-            self._raw_attr(PRIME_TELEMETRY_ATTRIBUTE)
-        )
+        prime_telemetry = _decode_prime_telemetry(self._prime_telemetry_source())
 
         status = normalize_status(
             self._state_value(CONF_SOURCE_STATUS)
@@ -412,10 +410,39 @@ class AmperePointCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return None
         return state.attributes.get(attr_name)
 
+    def _prime_telemetry_source(self) -> Any:
+        """Return the raw DP102 payload from any mapped source entity.
+
+        The telemetry attribute lives on the tuya-local charging-status
+        sensor. Entries created while that entity was still unavailable (or
+        by older releases) have no raw-DP mapping, so the already-mapped
+        status entity doubles as a fallback and heals such entries without
+        a migration.
+        """
+        for key in (CONF_SOURCE_RAW_DP, CONF_SOURCE_STATUS):
+            entity_id = self._config(key)
+            if not entity_id:
+                continue
+            state = self.hass.states.get(entity_id)
+            if state is None:
+                continue
+            value = state.attributes.get(PRIME_TELEMETRY_ATTRIBUTE)
+            if value is not None:
+                return value
+        return None
+
     def _mapped_raw_values(self) -> dict[str, Any]:
         entity_id = self._config(CONF_SOURCE_RAW_DP)
         state = self.hass.states.get(entity_id) if entity_id else None
         if state is None:
+            # Entries without a raw-DP mapping still get the Prime DP list
+            # when the status entity carries the telemetry attributes.
+            fallback_id = self._config(CONF_SOURCE_STATUS)
+            fallback = self.hass.states.get(fallback_id) if fallback_id else None
+            if fallback is not None:
+                prime_values = _prime_raw_values(fallback.state, fallback.attributes)
+                if prime_values:
+                    return prime_values
             return {}
         embedded = state.attributes.get("raw_dp")
         if isinstance(embedded, dict):
