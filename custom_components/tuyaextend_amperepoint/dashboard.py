@@ -151,7 +151,16 @@ def _is_generated_legacy_dashboard(
         }
     ):
         return False
-    if card.get("entities", {}) != expected_entities:
+    stored_entities = card.get("entities", {})
+    if not isinstance(stored_entities, dict):
+        return False
+    # Legacy dashboards predate sensors added later (for example session
+    # duration), so the stored mapping is a subset of today's expected
+    # mapping; a renamed or foreign entity marks the dashboard as customized.
+    if any(
+        expected_entities.get(card_key) != entity_id
+        for card_key, entity_id in stored_entities.items()
+    ):
         return False
     if card.get("configEntryId", entry.entry_id) != entry.entry_id:
         return False

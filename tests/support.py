@@ -77,6 +77,7 @@ def install_homeassistant_stubs() -> None:
     _module(
         "homeassistant.const",
         CONF_ICON="icon",
+        EVENT_HOMEASSISTANT_STARTED="homeassistant_started",
         ATTR_UNIT_OF_MEASUREMENT="unit_of_measurement",
         PERCENTAGE="%",
         UnitOfElectricCurrent=types.SimpleNamespace(MILLIAMPERE="mA", AMPERE="A"),

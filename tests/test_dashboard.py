@@ -68,6 +68,27 @@ class LegacyDashboardTests(unittest.TestCase):
             dashboard._is_generated_legacy_dashboard(config, self.entry, self.entities)
         )
 
+    def test_dashboard_generated_before_new_sensors_is_still_removed(self) -> None:
+        """Sensors added later must not disqualify unchanged legacy panels."""
+        config = _legacy_config(self.entry, self.entities)
+        expected_with_new_sensor = {
+            **self.entities,
+            "sessionDuration": "sensor.garage_session_duration",
+        }
+        self.assertTrue(
+            dashboard._is_generated_legacy_dashboard(
+                config, self.entry, expected_with_new_sensor
+            )
+        )
+
+    def test_foreign_entity_key_is_preserved(self) -> None:
+        config = _legacy_config(
+            self.entry, {**self.entities, "custom": "sensor.something_else"}
+        )
+        self.assertFalse(
+            dashboard._is_generated_legacy_dashboard(config, self.entry, self.entities)
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

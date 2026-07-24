@@ -48,6 +48,11 @@ card._hass = {
       device_id: "garage",
       translation_key: "schedule_start_time",
     },
+    "sensor.garage_session_duration": {
+      platform: "tuyaextend_amperepoint",
+      device_id: "garage",
+      translation_key: "session_duration",
+    },
     "sensor.driveway_power": {
       platform: "tuyaextend_amperepoint",
       device_id: "driveway",
@@ -65,6 +70,12 @@ assert.equal(
   card.apRegistryEntities("garage").scheduleStartTime,
   "time.garage_schedule_start",
   "schedule_start_time should use the exact translation-key mapping",
+);
+
+assert.equal(
+  card.apRegistryEntities("garage").sessionDuration,
+  "sensor.garage_session_duration",
+  "session_duration must resolve through the registry map (Prime telemetry)",
 );
 
 card._plannerDirty = true;

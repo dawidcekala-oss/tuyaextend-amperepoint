@@ -133,6 +133,42 @@ class PrimeTelemetryDecodeTests(unittest.TestCase):
         self.assertEqual(data["raw_dp"]["102"], CHARGING_PAYLOAD)
 
 
+class PrimeTelemetryFallbackTests(unittest.TestCase):
+    def test_update_works_without_raw_dp_mapping(self) -> None:
+        """Entries frozen without source_raw_dp heal via the status entity."""
+        instance = _make_coordinator()
+        data = dict(instance.config_entry.data)
+        del data[const.CONF_SOURCE_RAW_DP]
+        instance.config_entry.data = data
+
+        result = asyncio.run(instance._async_update_data())
+        self.assertEqual(result["power_kw"], 1.4)
+        self.assertEqual(result["session_energy_kwh"], 0.1)
+        self.assertEqual(result["temperature_c"], 36.0)
+        self.assertEqual(result["voltage_l1"], 218.0)
+        self.assertEqual(result["cp_voltage_v"], 6.0)
+        self.assertEqual(result["session_duration_min"], 22.3)
+        self.assertEqual(result["raw_dp"]["102"], CHARGING_PAYLOAD)
+
+    def test_sleep_state_is_normalized(self) -> None:
+        self.assertEqual(models.normalize_status("sleep"), "Uspiony")
+        self.assertEqual(models.normalize_status("SLEEP"), "Uspiony")
+
+
+class PrimeDiscoveryGateTests(unittest.TestCase):
+    def test_wallbox_and_prime_names_pass_the_gate(self) -> None:
+        for text in (
+            "Wallbox Prime 22kW",
+            "wallbox_stock_1",
+            "gbmxngploofmhbjc",
+            "Ladowarka garaz Wallbox",
+        ):
+            self.assertTrue(discovery._looks_like_amperepoint(text), text)
+
+    def test_unrelated_devices_stay_filtered(self) -> None:
+        self.assertFalse(discovery._looks_like_amperepoint("Living room lamp"))
+
+
 class PrimeTelemetryDiscoveryTests(unittest.TestCase):
     def test_telemetry_attribute_is_selected_as_raw_dp_source(self) -> None:
         entry = types.SimpleNamespace(

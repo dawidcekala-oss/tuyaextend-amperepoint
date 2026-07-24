@@ -1,4 +1,4 @@
-const AP_Q22_DASHBOARD_VERSION = "0.5.5";
+const AP_Q22_DASHBOARD_VERSION = "0.5.6";
 const AP_Q22_INTEGRATION_DOMAIN = "tuyaextend_amperepoint";
 const AP_Q22_HACS_PATH = "/hacs/repository?owner=amperepoint&repository=tuyaextend-amperepoint&category=integration";
 
@@ -581,6 +581,7 @@ class AmperePointQ22Card extends HTMLElement {
       error: "faults",
       power: "power",
       session_energy: "sessionEnergy",
+      session_duration: "sessionDuration",
       total_energy: "totalEnergy",
       last_session_energy: "lastSessionDp25",
       temperature: "temperature",
@@ -693,7 +694,7 @@ class AmperePointQ22Card extends HTMLElement {
       faults: { domains: ["sensor", "binary_sensor"], any: [" error", "_error", " fault", "_fault", " bled", "_bled"], not: [] },
       power: { domains: ["sensor"], any: [" power", "_power", "total power", "total_power", "moc chwilowa", "moc teraz"], not: ["power_l1", "power_l2", "power_l3", "moc_l1", "moc_l2", "moc_l3", "phase", "faza"] },
       sessionEnergy: { domains: ["sensor"], any: ["session energy", "session_energy", "energia biezacej sesji", "energia_biezacej_sesji"], not: ["last", "ostatniej", "charge_energy_once"] },
-      sessionDuration: { domains: ["sensor"], any: ["session duration", "session_duration", "czas biezacej sesji", "czas_biezacej_sesji"], not: [] },
+      sessionDuration: { domains: ["sensor"], any: ["session duration", "session_duration", "czas sesji", "czas biezacej sesji", "czas_biezacej_sesji"], not: [] },
       totalEnergy: { domains: ["sensor"], any: ["total energy", "total_energy", "forward energy total", "forward_energy_total", "energia calkowita"], not: [] },
       dailyEnergy: { domains: ["sensor"], any: ["daily energy", "daily_energy", "daily total energy", "daily_total_energy", "energia dzienna"], not: [] },
       lastSessionDelta: { domains: ["sensor"], any: ["last session delta", "ostatniej sesji delta", "energia_ostatniej_sesji_delta"], not: [] },
