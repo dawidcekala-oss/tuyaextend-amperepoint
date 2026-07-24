@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import sys
 import types
 import unittest
@@ -15,12 +16,29 @@ const = load_integration_module("const")
 
 
 class _Candidate:
-    def __init__(self, device_id: str, mapping: dict[str, str] | None = None) -> None:
+    def __init__(
+        self,
+        device_id: str,
+        mapping: dict[str, str] | None = None,
+        title: str = "",
+    ) -> None:
         self.device_id = device_id
         self.mapping = mapping or {}
+        self.title = title
 
     def as_config_data(self) -> dict[str, str]:
         return {const.CONF_SOURCE_DEVICE_ID: self.device_id, **self.mapping}
+
+
+class _DeviceRegistry:
+    def __init__(self, identifiers: dict[str, set[tuple[str, str]]]) -> None:
+        self._identifiers = identifiers
+
+    def async_get(self, device_id: str):
+        identifiers = self._identifiers.get(device_id)
+        if identifiers is None:
+            return None
+        return types.SimpleNamespace(identifiers=identifiers)
 
 
 class _Flow:
@@ -50,6 +68,12 @@ class _ConfigEntries:
 
     def async_entries(self, domain: str):
         return list(self._entries) if domain == const.DOMAIN else []
+
+    def async_update_entry(self, entry, *, options=None, data=None) -> None:
+        if options is not None:
+            entry.options = options
+        if data is not None:
+            entry.data = data
 
 
 class _Bus:
@@ -134,6 +158,60 @@ class AutoAdoptionTests(unittest.TestCase):
                 self.assertEqual(adoption.start_auto_adoption(hass), 1)
         finally:
             hass.close_tasks()
+
+    def test_physical_twin_backfills_the_existing_entry(self) -> None:
+        # Cloud Tuya entry exists; the tuya-local twin of the same charger
+        # shares the vendor id in its registry identifiers. Instead of a
+        # duplicate entry, the existing one gains the missing telemetry
+        # mapping.
+        hass = _Hass(("cloud-dev",))
+        registry = _DeviceRegistry(
+            {
+                "cloud-dev": {("tuya", "phys-1")},
+                "local-dev": {("tuya_local", "phys-1")},
+            }
+        )
+        candidates = [
+            _Candidate(
+                "local-dev",
+                {
+                    "source_status": "sensor.local_status",
+                    "source_raw_dp": "sensor.local_status",
+                },
+            )
+        ]
+        try:
+            with (
+                patch.object(adoption, "discover_sources", return_value=candidates),
+                patch.object(adoption.dr, "async_get", return_value=registry),
+            ):
+                self.assertEqual(adoption.start_auto_adoption(hass), 0)
+            entry = hass.config_entries.async_entries(const.DOMAIN)[0]
+            self.assertEqual(
+                entry.options["source_raw_dp"], "sensor.local_status"
+            )
+        finally:
+            hass.close_tasks()
+
+    def test_duplicate_title_is_adopted_once_with_richest_mapping(self) -> None:
+        # The same charger seen through two sources with unrelated registry
+        # identifiers still dedupes by name, and the candidate with the most
+        # telemetry wins.
+        hass = _Hass()
+        candidates = [
+            _Candidate("cloud-dev", {"source_status": "sensor.a"}, "wallbox_stock_1"),
+            _Candidate(
+                "local-dev",
+                {"source_status": "sensor.b", "source_raw_dp": "sensor.b"},
+                "wallbox_stock_1",
+            ),
+        ]
+        with patch.object(adoption, "discover_sources", return_value=candidates):
+            self.assertEqual(adoption.start_auto_adoption(hass), 1)
+        self.assertEqual(len(hass.tasks), 1)
+        asyncio.run(hass.tasks.pop())
+        _, _, data = hass.config_entries.flow.calls[0]
+        self.assertEqual(data[const.CONF_SOURCE_DEVICE_ID], "local-dev")
 
     def test_manually_configured_charger_is_not_adopted_again(self) -> None:
         # A manual entry stores no source_device_id, only mapped entity ids.

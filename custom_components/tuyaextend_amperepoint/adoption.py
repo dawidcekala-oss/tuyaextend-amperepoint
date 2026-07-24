@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import re
+from typing import Any
 
 from homeassistant.config_entries import SOURCE_INTEGRATION_DISCOVERY
-from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
+from homeassistant.const import CONF_NAME, EVENT_HOMEASSISTANT_STARTED
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 
-from .const import CONF_SOURCE_DEVICE_ID, DOMAIN
+from .const import CONF_SOURCE_DEVICE_ID, CONF_SOURCE_NAME, DOMAIN
 from .discovery import discover_sources
 
 _AUTO_ADOPTION_STARTED = "auto_adoption_started"
@@ -14,19 +16,79 @@ _AUTO_ADOPTION_STARTED = "auto_adoption_started"
 _ENTITY_ID_PATTERN = re.compile(r"^[a-z_]+\.[a-z0-9_]+$")
 
 
-def _used_entity_ids(hass: HomeAssistant) -> set[str]:
-    """Return every entity id referenced by existing entries.
+def _physical_ids(hass: HomeAssistant, device_id: str) -> set[str]:
+    """Return the underlying vendor ids of a registry device.
 
-    Manually created entries store no source device id, so mapped entity ids
-    are the only way to recognize that a discovered charger is already
-    configured and must not be adopted a second time.
+    The cloud Tuya and tuya-local integrations register separate registry
+    devices for the same physical charger, but both carry the vendor device
+    id in their identifier tuples.
     """
-    used: set[str] = set()
+    registry = dr.async_get(hass)
+    device = registry.async_get(device_id) if registry else None
+    if device is None:
+        return set()
+    return {str(identifier[-1]) for identifier in device.identifiers}
+
+
+def _normalized_title(value: object) -> str:
+    return str(value or "").strip().casefold()
+
+
+def _entry_infos(hass: HomeAssistant) -> list[dict[str, Any]]:
+    infos: list[dict[str, Any]] = []
     for config_entry in hass.config_entries.async_entries(DOMAIN):
-        for value in {**config_entry.data, **config_entry.options}.values():
-            if isinstance(value, str) and _ENTITY_ID_PATTERN.match(value):
-                used.add(value)
-    return used
+        merged = {**config_entry.data, **config_entry.options}
+        source_device_id = str(merged.get(CONF_SOURCE_DEVICE_ID, ""))
+        titles = {
+            title
+            for title in (
+                _normalized_title(getattr(config_entry, "title", None)),
+                _normalized_title(merged.get(CONF_NAME)),
+                _normalized_title(merged.get(CONF_SOURCE_NAME)),
+            )
+            if title
+        }
+        entities = {
+            value
+            for value in merged.values()
+            if isinstance(value, str) and _ENTITY_ID_PATTERN.match(value)
+        }
+        infos.append(
+            {
+                "entry": config_entry,
+                "device_id": source_device_id,
+                "physical": (
+                    _physical_ids(hass, source_device_id) if source_device_id else set()
+                ),
+                "titles": titles,
+                "entities": entities,
+            }
+        )
+    return infos
+
+
+def _async_backfill_mapping(hass: HomeAssistant, info: dict[str, Any], candidate) -> None:
+    """Copy mapping keys a twin source provides into the existing entry.
+
+    When the same physical charger becomes visible through a richer source
+    (for example tuya-local exposing the Prime telemetry attribute next to a
+    cloud entry), the existing entry gains the missing source mappings
+    instead of a duplicate entry being created.
+    """
+    entry = info["entry"]
+    if entry is None:
+        return
+    merged = {**entry.data, **entry.options}
+    missing = {
+        key: value
+        for key, value in candidate.mapping.items()
+        if not merged.get(key)
+    }
+    if not missing:
+        return
+    hass.config_entries.async_update_entry(
+        entry, options={**entry.options, **missing}
+    )
 
 
 def start_auto_adoption(hass: HomeAssistant) -> int:
@@ -58,20 +120,35 @@ def start_auto_adoption(hass: HomeAssistant) -> int:
         return 0
 
     domain_data[_AUTO_ADOPTION_STARTED] = True
-    configured_device_ids = {
-        str(config_entry.data.get(CONF_SOURCE_DEVICE_ID, ""))
-        for config_entry in hass.config_entries.async_entries(DOMAIN)
-    }
-    used_entities = _used_entity_ids(hass)
+    infos = _entry_infos(hass)
 
     scheduled = 0
-    for candidate in candidates:
-        if candidate.device_id in configured_device_ids:
+    # Richer mappings first, so when the same physical charger is visible
+    # through several sources (cloud Tuya and tuya-local) the candidate with
+    # the most telemetry wins and its twins only backfill the existing entry.
+    for candidate in sorted(
+        candidates, key=lambda item: len(item.mapping), reverse=True
+    ):
+        candidate_physical = _physical_ids(hass, candidate.device_id)
+        candidate_title = _normalized_title(getattr(candidate, "title", ""))
+        match = next(
+            (
+                info
+                for info in infos
+                if candidate.device_id == info["device_id"]
+                or (candidate_physical and candidate_physical & info["physical"])
+                or any(
+                    entity_id in info["entities"]
+                    for entity_id in candidate.mapping.values()
+                )
+                or (candidate_title and candidate_title in info["titles"])
+            ),
+            None,
+        )
+        if match is not None:
+            _async_backfill_mapping(hass, match, candidate)
             continue
-        if any(
-            entity_id in used_entities for entity_id in candidate.mapping.values()
-        ):
-            continue
+
         hass.async_create_task(
             hass.config_entries.flow.async_init(
                 DOMAIN,
@@ -80,4 +157,13 @@ def start_auto_adoption(hass: HomeAssistant) -> int:
             )
         )
         scheduled += 1
+        infos.append(
+            {
+                "entry": None,
+                "device_id": candidate.device_id,
+                "physical": candidate_physical,
+                "titles": {candidate_title} if candidate_title else set(),
+                "entities": set(candidate.mapping.values()),
+            }
+        )
     return scheduled
