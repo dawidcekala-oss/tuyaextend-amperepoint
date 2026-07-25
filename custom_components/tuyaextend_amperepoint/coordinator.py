@@ -316,6 +316,18 @@ class AmperePointCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         schedule_window = _decode_schedule_window(self._native_value("local_timer"))
 
+        target_energy_kwh = _first_not_none(
+            self._numeric_entity(CONF_SOURCE_TARGET_ENERGY, "energy_kwh"),
+            self._native_numeric("energy_charge"),
+        )
+        # "Reach target" only overrides the surplus while the goal is pending.
+        target_active = bool(
+            target_energy_kwh and session_energy_kwh < float(target_energy_kwh)
+        )
+        surplus_data = self._surplus_data(
+            now, source_power_kw, connected, target_active
+        )
+
         self._last_update = now
         self._was_charging = is_charging
         self._was_connected = connected
@@ -380,10 +392,7 @@ class AmperePointCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "power_l3": phase_powers[2],
             "work_mode": self._state_value(CONF_SOURCE_WORK_MODE)
             or self._native_value("work_mode"),
-            "target_energy_kwh": _first_not_none(
-                self._numeric_entity(CONF_SOURCE_TARGET_ENERGY, "energy_kwh"),
-                self._native_numeric("energy_charge"),
-            ),
+            "target_energy_kwh": target_energy_kwh,
             "schedule_start_time": schedule_window[0] if schedule_window else None,
             "schedule_end_time": schedule_window[1] if schedule_window else None,
             "system_version": self._native_value("system_version"),
@@ -398,18 +407,19 @@ class AmperePointCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "source_online": (
                 self.native_source.available if self.native_source else True
             ),
-            **self._surplus_data(now, source_power_kw, connected),
+            **surplus_data,
         }
 
     def _surplus_data(
-        self, now: datetime, power_kw: float | None, connected: bool
+        self,
+        now: datetime,
+        power_kw: float | None,
+        connected: bool,
+        target_active: bool,
     ) -> dict[str, Any]:
         """Evaluate the PV surplus engine and track how much sun was used."""
         self.surplus_engine.settings = self.surplus_settings()
         measurements = self.surplus_measurements(power_kw)
-        target_active = bool(self._config(CONF_SOURCE_TARGET_ENERGY)) or bool(
-            self.data.get("target_energy_kwh") if self.data else None
-        )
         decision = self.surplus_engine.evaluate(
             now, measurements, target_active=target_active
         )
