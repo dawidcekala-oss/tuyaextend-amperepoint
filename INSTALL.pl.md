@@ -159,7 +159,18 @@ Encja mocy magazynu + naładowania (opcjonalnie)
 ```
 
 Jeśli Twój licznik podaje import jako wartość ujemną, odznacz `Licznik sieci
-dodatni przy imporcie`. Jednostki W i kW są przeliczane automatycznie.
+dodatni przy imporcie`. (Falowniki Huawei przez `huawei_solar` podają **eksport
+jako dodatni**, więc dla nich ten przełącznik trzeba odznaczyć.) Jednostki W i
+kW są przeliczane automatycznie.
+
+Dwie rzeczy warto ustawić poprawnie:
+
+- **Licznik sieci powinien obejmować cały dom, razem z ładowarką.** Pobór
+  ładowarki jest wliczany jako dostępna nadwyżka — inaczej podniesienie prądu
+  wyglądałoby jak deficyt i sterowanie zaczęłoby oscylować.
+- **Wskaż encję produkcji PV.** Ogranicza ona nadwyżkę do tego, co faktycznie
+  produkujesz. Bez tego licznik, który nie widzi ładowarki, zapętliłby
+  rozliczenie i ładowarka podbijałaby prąd do maksimum także po zmroku.
 
 Tryby (`Tryb nadwyżki PV`, zmienialny też encją `Tryb PV` na panelu):
 

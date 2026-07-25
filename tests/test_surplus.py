@@ -76,6 +76,33 @@ class SurplusAccountingTests(unittest.TestCase):
         )
         self.assertEqual(available, 3000.0)
 
+    def test_surplus_never_exceeds_production(self) -> None:
+        """A meter that does not see the charger must not create surplus.
+
+        Found by driving the engine from the SUN2000 simulator: the charger's
+        own draw counts as available, so when the grid meter does not include
+        it the accounting feeds back on itself and ramps to maximum at night.
+        """
+        engine = _engine()
+        available = engine.available_surplus_w(
+            _measure(pv_w=0.0, grid_w=800.0, charger_w=16000.0)
+        )
+        self.assertEqual(available, 0.0)
+
+    def test_production_cap_still_allows_a_real_surplus(self) -> None:
+        engine = _engine()
+        available = engine.available_surplus_w(
+            _measure(pv_w=8500.0, grid_w=-3000.0, charger_w=4000.0)
+        )
+        self.assertEqual(available, 7000.0)
+
+    def test_night_time_never_charges_in_pv_only_mode(self) -> None:
+        engine = _engine(smoothing_samples=1)
+        decision = engine.evaluate(
+            START, _measure(pv_w=0.0, grid_w=800.0, charger_w=11000.0)
+        )
+        self.assertFalse(decision.charging)
+
     def test_discharging_battery_is_not_added_twice(self) -> None:
         engine = _engine()
         available = engine.available_surplus_w(

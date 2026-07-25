@@ -38,6 +38,15 @@ signed grid-power sensor or separate import and export sensors, and optionally
 house consumption plus battery power and state of charge. Sign conventions are
 configurable, and W/kW are normalized automatically.
 
+Two things are worth getting right:
+
+- **The grid meter should measure the whole house, charger included.** The
+  charger's own draw counts as available surplus, otherwise raising the current
+  would look like a deficit and the control would oscillate.
+- **Configure the PV production entity.** It bounds the surplus at what is
+  actually being produced, which keeps a meter that does not see the charger
+  from feeding the accounting back on itself.
+
 Modes:
 
 - **PV surplus only** - charge strictly from what would otherwise be exported.

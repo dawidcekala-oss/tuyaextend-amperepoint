@@ -152,6 +152,15 @@ class SurplusEngine:
         else:
             return None
 
+        if measurements.pv_w is not None:
+            # Surplus can never exceed production. Without this bound a grid
+            # meter that does not measure the charger turns the accounting into
+            # a feedback loop: every ampere added shows up as more "surplus",
+            # so the charger ramps to maximum and keeps charging from the grid
+            # after dark. Found by driving the engine from the SUN2000
+            # simulator, where the surplus climbed to 23 kW at midnight.
+            available = min(available, measurements.pv_w)
+
         battery_w = measurements.battery_w
         if battery_w is not None:
             soc = measurements.battery_soc
