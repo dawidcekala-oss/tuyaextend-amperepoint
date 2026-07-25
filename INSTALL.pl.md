@@ -143,6 +143,45 @@ resources:
     type: module
 ```
 
+## 4b. Ładowanie nadwyżką z fotowoltaiki
+
+Od wersji `0.6.0` integracja potrafi ładować z nadwyżki PV, korzystając z encji
+energii, które już masz w Home Assistant — niezależnie od marki falownika,
+licznika czy magazynu.
+
+W opcjach integracji wskaż swoje encje:
+
+```text
+Encja produkcji PV
+Encja mocy sieci (ze znakiem)   albo   Encja importu + Encja eksportu
+Encja zużycia domu              (opcjonalnie)
+Encja mocy magazynu + naładowania (opcjonalnie)
+```
+
+Jeśli Twój licznik podaje import jako wartość ujemną, odznacz `Licznik sieci
+dodatni przy imporcie`. Jednostki W i kW są przeliczane automatycznie.
+
+Tryby (`Tryb nadwyżki PV`, zmienialny też encją `Tryb PV` na panelu):
+
+- **Tylko nadwyżka PV** — ładowanie wyłącznie z tego, co poszłoby do sieci,
+- **PV + sieć** — nadwyżka plus dobranie mocy do ustawionego limitu importu,
+- **Osiągnij cel** — PV ma pierwszeństwo, ale niezrealizowany cel energii jest
+  nadrzędny i brakującą moc dobiera z sieci.
+
+Dodatkowe ustawienia: `Rezerwa dla domu` (moc zostawiana innym odbiornikom),
+`Maksymalny import z sieci` oraz `Użyj magazynu powyżej naładowania` — poniżej
+tego progu ładujący się magazyn ma pierwszeństwo przed samochodem.
+
+Sterowanie jest celowo spokojne: odczyty są uśredniane, więc przelotna chmura
+nie przerywa sesji; start ma zwłokę, a zatrzymanie dodatkowo minimalny czas
+pracy, więc włączony piekarnik nie zrywa ładowania; prąd zmienia się stopniowo
+zamiast skakać. Brak lub nieaktualne dane zatrzymują tryb PV zamiast zgadywać.
+
+Ręczny override zawsze ma wyższy priorytet. Włączony plan tygodniowy działa
+jak okno pozwolenia — nadwyżka ładuje tylko w jego przedziałach, a limit prądu
+przedziału ogranicza żądanie — więc nie ma dwóch konkurujących właścicieli
+harmonogramu.
+
 ## 5. Co dodaje integracja
 
 TuyaExtend AmperePoint tworzy znormalizowane encje Home Assistant, takie jak:

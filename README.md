@@ -27,6 +27,39 @@ Home Assistant / HACS workspace for AmperePoint EV chargers using Tuya.
 
 Full installation manuals: [`INSTALL.en.md`](INSTALL.en.md) / [`INSTALL.pl.md`](INSTALL.pl.md).
 
+## Solar surplus charging
+
+From version `0.6.0` the integration can charge from photovoltaic surplus using
+the energy entities that already exist in Home Assistant, without depending on a
+particular inverter, meter or battery.
+
+Point it at your sensors in the integration options: PV production, either a
+signed grid-power sensor or separate import and export sensors, and optionally
+house consumption plus battery power and state of charge. Sign conventions are
+configurable, and W/kW are normalized automatically.
+
+Modes:
+
+- **PV surplus only** - charge strictly from what would otherwise be exported.
+- **PV + grid** - use the surplus and top it up from the grid, within the
+  configured import allowance.
+- **Reach target** - PV has priority, but a pending energy target wins and the
+  grid covers the rest.
+
+Control is deliberately unhurried: readings are averaged so passing clouds do
+not stop a session, a start delay debounces brief sunny spells, a stop delay
+and a minimum run time carry a session through house-load spikes, and the
+current ramps in steps instead of jumping. Missing or stale measurements stop
+the mode rather than guessing.
+
+A manual override always outranks the surplus. An enabled weekly plan acts as a
+permission window - surplus charging runs only inside its windows and its
+current limit caps the request - so the two never compete for the charger.
+
+The dashboard card gains a solar section showing production, available surplus,
+the decision in plain language and the share of the session actually covered by
+sun, plus a mode picker.
+
 ## Dashboard previews
 
 The values below are simulated, but the images are rendered from the bundled

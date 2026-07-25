@@ -425,7 +425,7 @@ class AmperePointCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         self.surplus_decision = decision
 
-        self._track_pv_energy(now, decision, power_kw, connected)
+        self._track_pv_energy(now, decision, measurements, power_kw, connected)
         session_energy = self._session_energy_kwh
         share = (
             round(100 * self._session_pv_energy_kwh / session_energy, 1)
@@ -450,7 +450,12 @@ class AmperePointCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         }
 
     def _track_pv_energy(
-        self, now: datetime, decision: Any, power_kw: float | None, connected: bool
+        self,
+        now: datetime,
+        decision: Any,
+        measurements: Any,
+        power_kw: float | None,
+        connected: bool,
     ) -> None:
         day = now.date().isoformat()
         if self._daily_pv_day != day:
@@ -469,8 +474,13 @@ class AmperePointCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if not timedelta(0) <= elapsed <= timedelta(minutes=10):
             return
 
-        # Only the share actually covered by surplus counts as solar.
-        solar_kw = min(power_kw, max(0.0, decision.available_w) / 1000)
+        # Only the share actually covered by surplus counts as solar, measured
+        # from the live reading rather than the smoothed control value: the
+        # averaging exists to steady the current, not to bill energy.
+        available_w = self.surplus_engine.available_surplus_w(measurements)
+        if available_w is None:
+            return
+        solar_kw = min(power_kw, max(0.0, available_w) / 1000)
         added = solar_kw * (elapsed.total_seconds() / 3600)
         self._session_pv_energy_kwh += added
         self._daily_pv_energy_kwh += added
