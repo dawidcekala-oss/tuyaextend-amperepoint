@@ -30,10 +30,28 @@
 # the device-type list - see the note in
 # amperepoint/profiles/tuya_local/amperepoint_prime_22kw_evcharger.yaml.
 #
-# This profile has no confirmed product id, so the two datapoints present in
-# every measured idle response (status DP3 and current setting DP4) are kept
-# required. Without that small signature an all-optional profile would match
-# unrelated Tuya devices that share none of the charger's datapoints.
+# A Q37 (product id fdfjiphjxtc9qyhd, 3.7 kW, single-phase, 16 A) was
+# captured on 2026-07-26 while paired with this profile and answered
+# identically:
+#
+#   {"3": "charger_free", "4": 16, "9": 0, "10": 0, "13": "controlpi_12v",
+#    "14": "charge_now", "18": true, "24": 28}
+#
+# Charging added DP1, DP6, DP7 and DP8 and confirmed two things that decide
+# whether one profile can serve the whole series:
+#   - DP9 is watts here too (1533 W next to L1 219.0 V x 7.2 A), so the
+#     scale below holds across generations.
+#   - DP1 only ever grows (0.00 -> 0.03 -> 0.04 -> 0.07 kWh over three
+#     sessions), so it is a lifetime meter and total_increasing is correct.
+# See amperepoint/docs/device-q37-ve-lan-capture.md for the full log.
+#
+# Only the Q37 has a confirmed product id; the Q11 is matched on its
+# datapoints alone. So the two datapoints present in every measured response
+# of both units (status DP3 and current setting DP4) are kept required.
+# Without that small signature an all-optional profile also matches unrelated
+# Tuya devices that share none of the charger's datapoints - a thermostat and
+# a temperature sensor both came back as matches while it was fully optional.
+# Any further generation added here has to report DP3 and DP4 as well.
 
 ---
 
@@ -41,6 +59,14 @@ name: Ampere Point Q11 PRO (local)
 products:
   - manufacturer: Ampere Point
     model: Q11 PRO (local)
+  # Captured on 2026-07-26: a Q37 (3.7 kW, 16 A, single-phase) answers with
+  # the same eight datapoints as the Q11, in the same types and with the same
+  # value vocabulary and the same 6-16 A range, so this profile covers it.
+  # Listing the product id makes tuya-local match on the id (quality 101)
+  # instead of on the datapoint set alone.
+  - id: fdfjiphjxtc9qyhd
+    manufacturer: Ampere Point
+    model: Q37 / EV Charger VE (local)
 
 entities:
   - entity: sensor
@@ -108,6 +134,10 @@ entities:
     class: current
     category: config
     dps:
+      # Both generations captured so far are 16 A units: amperepoint.pl gives
+      # the Q37 as 3.7 kW single-phase and the Q11 as 11 kW three-phase, each
+      # adjustable 6-16 A in 1 A steps. The series names are kilowatts, not
+      # amperes.
       - id: 4
         type: integer
         name: value
