@@ -61,23 +61,27 @@ class AmperePointCurrentLimitNumber(AmperePointEntity, NumberEntity):
 
     @property
     def native_min_value(self) -> float:
+        model_min = float(self.coordinator.model_limits.min_current_a)
         if value := _mapped_number_attribute(
             self.coordinator, CONF_SOURCE_CURRENT_LIMIT, "min"
         ):
-            return value
+            return max(value, model_min)
         if value := self.coordinator.dp_definition("charge_cur_set").get("min"):
-            return float(value)
-        return float(self.coordinator.model_limits.min_current_a)
+            return max(float(value), model_min)
+        return model_min
 
     @property
     def native_max_value(self) -> float:
+        # One profile can serve several models, so its range covers the whole
+        # series; the detected model decides what this charger really allows.
+        model_max = float(self.coordinator.model_limits.max_current_a)
         if value := _mapped_number_attribute(
             self.coordinator, CONF_SOURCE_CURRENT_LIMIT, "max"
         ):
-            return value
+            return min(value, model_max)
         if value := self.coordinator.dp_definition("charge_cur_set").get("max"):
-            return float(value)
-        return float(self.coordinator.model_limits.max_current_a)
+            return min(float(value), model_max)
+        return model_max
 
     @property
     def native_step(self) -> float:
