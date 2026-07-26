@@ -30,8 +30,9 @@
 # the device-type list - see the note in
 # amperepoint/profiles/tuya_local/amperepoint_prime_22kw_evcharger.yaml.
 #
-# A Q37 (product id fdfjiphjxtc9qyhd, three-phase, 48 A) was captured on
-# 2026-07-26 while paired with this profile and answered identically:
+# A Q37 (product id fdfjiphjxtc9qyhd, 3.7 kW, single-phase, 16 A) was
+# captured on 2026-07-26 while paired with this profile and answered
+# identically:
 #
 #   {"3": "charger_free", "4": 16, "9": 0, "10": 0, "13": "controlpi_12v",
 #    "14": "charge_now", "18": true, "24": 28}
@@ -50,10 +51,11 @@ name: Ampere Point Q11 PRO (local)
 products:
   - manufacturer: Ampere Point
     model: Q11 PRO (local)
-  # Captured on 2026-07-26: a Q37 answers with the same eight datapoints as
-  # the Q11, in the same types and with the same value vocabulary, so this
-  # profile covers it. Listing the product id makes tuya-local match on the
-  # id (quality 101) instead of on the datapoint set alone.
+  # Captured on 2026-07-26: a Q37 (3.7 kW, 16 A, single-phase) answers with
+  # the same eight datapoints as the Q11, in the same types and with the same
+  # value vocabulary and the same 6-16 A range, so this profile covers it.
+  # Listing the product id makes tuya-local match on the id (quality 101)
+  # instead of on the datapoint set alone.
   - id: fdfjiphjxtc9qyhd
     manufacturer: Ampere Point
     model: Q37 / EV Charger VE (local)
@@ -125,11 +127,10 @@ entities:
     class: current
     category: config
     dps:
-      # The Q Series spans 16 A single-phase (Q11) to 48 A three-phase (Q37)
-      # and the charger publishes no minimum/maximum datapoint to tell them
-      # apart, so a single profile can only declare the union of both. The
-      # AmperePoint integration narrows its own slider to the limits of the
-      # detected model, so a Q11 still stops at 16 A.
+      # Both generations captured so far are 16 A units: amperepoint.pl gives
+      # the Q37 as 3.7 kW single-phase and the Q11 as 11 kW three-phase, each
+      # adjustable 6-16 A in 1 A steps. The series names are kilowatts, not
+      # amperes.
       - id: 4
         type: integer
         optional: true
@@ -137,7 +138,7 @@ entities:
         unit: A
         range:
           min: 6
-          max: 48
+          max: 16
 
   - entity: select
     name: Charging mode

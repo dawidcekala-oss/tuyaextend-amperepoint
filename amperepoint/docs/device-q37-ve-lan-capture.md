@@ -79,9 +79,14 @@ Q22 - voltage `FFFF0000000000` scale 10, current `0000FFFFFF0000` scale
 consistent readings: 219.0 V x 7.2 A = 1.58 kW against a reported 1.533 kW,
 and 229.0 V unloaded sagging to 219.0 V under load.
 
-L2 and L3 stayed at exactly 0.0 throughout, which also confirms that a
-three-phase unit charging on one phase does not invent readings on the other
-two - the case issue 18 was reopened for.
+L2 and L3 stayed at exactly 0.0 throughout. Note what this does and does not
+prove: the Q37 is a single-phase unit, so empty L2/L3 is the expected result,
+not evidence about the three-phase case from issue 18. It does show the
+decoder produces clean zeros rather than noise. The three-phase case has to
+be confirmed on a Q11.
+
+The load during both sessions was a kettle on a test rig, not a vehicle,
+which is why the parameters repeat so exactly between sessions.
 
 The raw base64 payloads were not retained in the log; the values above come
 from the decoded entities in the recorder.
@@ -99,16 +104,26 @@ have to vary per generation.
 
 ## Charging current range
 
-This is the one place where the generations genuinely disagree and the
-charger gives no help: there is no minimum/maximum datapoint to read. A Q11
-allows 6-16 A single-phase, a Q37 6-48 A three-phase, and both answer with
-the same eight datapoints, so nothing in the LAN response distinguishes them.
+No conflict between these two generations. Per amperepoint.pl the series
+names are kilowatts, not amperes:
 
-The profile declares the union, 6-48 A, and the AmperePoint integration
-narrows its own slider to the limits of the detected model, so a Q11 still
-stops at 16 A. Model detection reads the device model string that tuya-local
-writes from the matched `products:` entry, which is why this capture also
-added the Q37 product id to the profile.
+| Model | Power | Current | Phases |
+| --- | --- | --- | --- |
+| Q37 | 3.7 kW | 6-16 A, 1 A steps | 1 |
+| Q11 | 11 kW | 6-16 A | 3 |
+| Q74 | 7.4 kW | up to 32 A | 1 |
+| Q22 | 22 kW | up to 32 A | 3 |
+
+Both captured units are 16 A, so the profile keeps `range: 6..16`.
+
+`models.py` inherited from the base repo read "Q37" as 37 A and declared the
+model as 48 A three-phase, the exact opposite of the product. That is
+corrected here: Q37 is 1 phase / 16 A, Q11 is 3 phases / 16 A.
+
+Still open for a truly universal profile: the 32 A models (Q22, Q74) do not
+fit a 6-16 A range, and the charger publishes no minimum/maximum datapoint to
+tell generations apart. Decide that when one of them is actually captured -
+not from the model name.
 
 ## Matcher result after adding the product id
 

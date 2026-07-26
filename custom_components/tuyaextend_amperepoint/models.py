@@ -23,19 +23,22 @@ MODELS: dict[str, AmperePointModel] = {
         min_current_a=6,
         max_current_a=48,
     ),
+    # The Q Series names are kilowatts, not amperes: amperepoint.pl lists the
+    # Q11 as 11 kW three-phase and the Q37 as 3.7 kW single-phase, and both
+    # adjust 6-16 A in 1 A steps.
     "q11": AmperePointModel(
         key="q11",
         name="AmperePoint Q Series Q11",
-        phases=1,
+        phases=3,
         min_current_a=6,
         max_current_a=16,
     ),
     "q37": AmperePointModel(
         key="q37",
         name="AmperePoint Q Series VE",
-        phases=3,
+        phases=1,
         min_current_a=6,
-        max_current_a=48,
+        max_current_a=16,
     ),
     "q22": AmperePointModel(
         key="q22",
