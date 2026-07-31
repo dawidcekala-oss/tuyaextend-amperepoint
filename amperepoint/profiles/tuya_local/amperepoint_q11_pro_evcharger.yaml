@@ -74,7 +74,7 @@
 
 ---
 
-name: Ampere Point EV Charger (local)
+name: Ampere Point Q Series (local)
 products:
   # One entry only, so the device-type list shows one row for the series
   # instead of one per model. tuya-local builds that row from manufacturer +
@@ -94,10 +94,10 @@ products:
   # product. jhlyzpk5nfk28nrh is the Q11 PRO.
   - id: fdfjiphjxtc9qyhd
     manufacturer: Ampere Point
-    model: Q Series - all models (local)
+    model: Q Series (local)
   - id: jhlyzpk5nfk28nrh
     manufacturer: Ampere Point
-    model: Q Series - all models (local)
+    model: Q Series (local)
   # bktb3jskdic1ar2t is an OEM base sold under several brands - the Wada
   # Power, Noeifevo and Nine profiles all declare it too. A Q74 on it was
   # captured charging: 218.0 V x 7.3 A on L1 against 1.526 kW on DP9, so the
@@ -106,7 +106,7 @@ products:
   # profile once a device's id is known and unclaimed.
   - id: bktb3jskdic1ar2t
     manufacturer: Ampere Point
-    model: Q Series - all models (local)
+    model: Q Series (local)
 
 entities:
   - entity: sensor
