@@ -18,7 +18,7 @@ figure into the model table originally.
 | Q11 PRO | 11 kW | 6-16 A | 3 | none confirmed | yes |
 | Q37 | 3.7 kW | 6-16 A | 1 | `fdfjiphjxtc9qyhd` | yes |
 | Q22 | 22 kW | 6-32 A | 3 | `fdfjiphjxtc9qyhd` | yes |
-| Q74 | 7.4 kW | 6-32 A | 1 | unknown | no |
+| Q74 | 7.4 kW | 6-32 A | 1 | `bktb3jskdic1ar2t` | yes |
 
 ## Every generation answers with the same datapoints
 
@@ -40,6 +40,40 @@ while idle. Every datapoint except DP3 and DP4 is therefore optional.
 DP1 also differs in meaning: a session counter on the Q37, a lifetime meter
 on the Q11. `total_increasing` covers both, so the profile maps it the same
 way; the entity name "Total energy" only fits the Q11 reading.
+
+## The Q74 runs on a different OEM base
+
+`bktb3jskdic1ar2t` is not an AmperePoint id at all: the Wada Power, Noeifevo
+and Nine profiles declare it too, so it is a base sold under several brands.
+Declaring it here means this profile is also offered for those chargers.
+
+It was captured charging, which is what the declaration rests on:
+
+```
+12:03:29  work_state waiting     vehicle plugged in, no current
+12:03:44  work_state charging    L1 218.0 V x 7.3 A, DP9 1.526 kW
+12:04:20  work_state waiting     switch off, still plugged in
+12:04:32  work_state available   unplugged
+```
+
+218.0 V x 7.3 A is 1.591 kW against 1.526 kW reported, a 4% gap that is
+power factor and the 0.1 A rounding of the current. So the watt scale and
+the phase masks hold on this base as well.
+
+Three datapoints are missing here and on no other unit: DP13 (Control
+Pilot), DP24 (temperature) and DP1, which never appeared even mid-session.
+Seven datapoints where the rest of the series reports eight or more.
+
+That makes this the third distinct behaviour for DP1 across the series: a
+session counter on the Q37, a lifetime meter on the Q11, absent on the Q74.
+DP25 does arrive, carrying the ended session's energy, as it does on the
+Q37.
+
+Without DP13 the work state is the only source for whether a vehicle is
+plugged in, and the capture above settles its vocabulary: `available` is an
+empty socket, `waiting` is a vehicle present but not drawing. The switch
+turned on at 12:02:56 and current only started at 12:03:44, when the vehicle
+presented - the switch is a permission, not a command.
 
 ## The product id does not identify a model
 
@@ -103,8 +137,11 @@ all three.
 
 ## Still open
 
-- Capture a Q74 to confirm its product id and that it answers like the rest.
 - Whether a distinguishing datapoint appears while charging on a 32 A unit.
-- The Q22 OTA (`cu111poj2mtikvls`) and the unit behind
-  `amperepoint_q_series_evcharger` (`bktb3jskdic1ar2t`) are separate products
-  that this profile has not been measured against.
+  The Q74 capture did not provide one: it reports fewer datapoints than the
+  16 A units, not more.
+- The Q22 OTA (`cu111poj2mtikvls`) is a separate product this profile has
+  not been measured against.
+- `bktb3jskdic1ar2t` is now declared here on the strength of one Q74. The
+  other brands on that base were not tested, and the base repo's
+  `amperepoint_q_series_evcharger` claims it as well.

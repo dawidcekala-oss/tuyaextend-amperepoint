@@ -98,6 +98,15 @@ products:
   - id: jhlyzpk5nfk28nrh
     manufacturer: Ampere Point
     model: Q Series - all models (local)
+  # bktb3jskdic1ar2t is an OEM base sold under several brands - the Wada
+  # Power, Noeifevo and Nine profiles all declare it too. A Q74 on it was
+  # captured charging: 218.0 V x 7.3 A on L1 against 1.526 kW on DP9, so the
+  # watt scale and the phase masks hold here as well. Declaring the id also
+  # restores the list label, which otherwise falls back to `name:` for every
+  # profile once a device's id is known and unclaimed.
+  - id: bktb3jskdic1ar2t
+    manufacturer: Ampere Point
+    model: Q Series - all models (local)
 
 entities:
   - entity: sensor
