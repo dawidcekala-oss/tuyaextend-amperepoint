@@ -1,11 +1,13 @@
 # One profile for the Q Series: what it covers and what decides the rest
 
-`amperepoint_q11_pro_evcharger` is being grown into a single profile for the
-whole Q Series. This file records which models it covers, what was measured,
-and why the two per-model differences are resolved outside the profile.
+`amperepoint_q_series_local` is one profile for the whole Q Series. This
+file records which models it covers, what was measured, and why the two
+per-model differences are resolved outside the profile.
 
-The file name still says q11_pro; renaming it would orphan existing
-tuya-local entries, so that waits for a deliberate migration.
+The file was renamed from amperepoint_q11_pro_evcharger once all four
+generations were measured. tuya-local stores the file name as the entry's
+`config_type`, so entries created under the old name have to be repointed
+or re-created - the rename is not backwards compatible.
 
 ## Models
 
@@ -15,7 +17,7 @@ figure into the model table originally.
 
 | Model | Power | Current | Phases | Product id | Captured |
 | --- | --- | --- | --- | --- | --- |
-| Q11 PRO | 11 kW | 6-16 A | 3 | none confirmed | yes |
+| Q11 PRO | 11 kW | 6-16 A | 3 | `jhlyzpk5nfk28nrh` | yes |
 | Q37 | 3.7 kW | 6-16 A | 1 | `fdfjiphjxtc9qyhd` | yes |
 | Q22 | 22 kW | 6-32 A | 3 | `fdfjiphjxtc9qyhd` | yes |
 | Q74 | 7.4 kW | 6-32 A | 1 | `bktb3jskdic1ar2t` | yes |

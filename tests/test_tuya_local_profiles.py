@@ -47,7 +47,7 @@ ALLOWED_DPS_TYPES = {
 # only checked against the structural rules, not against these conventions.
 MAINTAINED_FILENAMES = (
     "amperepoint_prime_22kw_evcharger.yaml",
-    "amperepoint_q11_pro_evcharger.yaml",
+    "amperepoint_q_series_local.yaml",
 )
 
 
@@ -154,7 +154,7 @@ class TuyaLocalProfileTests(unittest.TestCase):
 
     def test_q11_uses_stable_dps_as_its_signature(self) -> None:
         """DP3 and DP4 were present in the measured idle status response."""
-        config = self.maintained["amperepoint_q11_pro_evcharger.yaml"]
+        config = self.maintained["amperepoint_q_series_local.yaml"]
         required = {
             dps["id"]
             for entity in config["entities"]
@@ -167,7 +167,7 @@ class TuyaLocalProfileTests(unittest.TestCase):
         """Datapoints absent from hardware captures must not hide a profile."""
         intermittent = {
             "amperepoint_prime_22kw_evcharger.yaml": {108},
-            "amperepoint_q11_pro_evcharger.yaml": {1, 6, 7, 8, 17, 19, 23, 25, 33},
+            "amperepoint_q_series_local.yaml": {1, 6, 7, 8, 17, 19, 23, 25, 33},
         }
         for filename, ids in intermittent.items():
             config = self.maintained[filename]
@@ -204,7 +204,7 @@ class TuyaLocalProfileTests(unittest.TestCase):
         claimed for it alone.
         """
         answered_by_status = {3, 4, 9, 10, 13, 14, 18, 24}
-        config = self.maintained["amperepoint_q11_pro_evcharger.yaml"]
+        config = self.maintained["amperepoint_q_series_local.yaml"]
         for entity in config["entities"]:
             for dps in entity["dps"]:
                 if dps["id"] in answered_by_status:
