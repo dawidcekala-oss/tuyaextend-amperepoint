@@ -214,6 +214,14 @@ def normalize_error(value: Any) -> str:
 
 
 def normalize_connected(value: Any, fallback: bool = False) -> bool:
+    """Whether a vehicle is plugged in, from whatever datapoint says so.
+
+    The Control Pilot state (DP13) answers this directly, but not every
+    generation reports it - a Q74 has no DP13 at all, leaving the work state
+    (DP3) as the only source. Its values divide cleanly: a charger that is
+    waiting, paused or finished has something in its socket, and only
+    "free" means an empty one.
+    """
     if value is None:
         return fallback
     raw = str(value).strip().lower()
@@ -228,6 +236,12 @@ def normalize_connected(value: Any, fallback: bool = False) -> bool:
         "charging",
         "charger_charging",
         "charger_insert",
+        "charger_wait",
+        "waiting",
+        "charger_pause",
+        "paused",
+        "charger_end",
+        "charged",
         "controlpi_9v",
         "controlpi_9v_pwm",
         "controlpi_6v",
@@ -238,7 +252,21 @@ def normalize_connected(value: Any, fallback: bool = False) -> bool:
         "podlaczone",
     }:
         return True
-    if raw in {"0", "false", "off", "no", "disconnected", "unplugged", "odlaczone"}:
+    if raw in {
+        "0",
+        "false",
+        "off",
+        "no",
+        "disconnected",
+        "unplugged",
+        "odlaczone",
+        "charger_free",
+        "available",
+        "charger_free_fault",
+        "fault_unplugged",
+        "controlpi_12v",
+        "standby",
+    }:
         return False
     return fallback
 
